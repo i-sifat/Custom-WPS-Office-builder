@@ -20,11 +20,19 @@ the resulting tree.
 
 ## Files
 
-| File | What it is |
-| --- | --- |
-| `build-dirs.txt` | Every directory in the extracted tree (`find build -type d`). |
-| `build-manifest.txt` | Full file-by-file manifest of the extracted package. |
-| `build-sizes.txt` | Per-file sizes for the extracted package. |
+| File | What it is | Location |
+| --- | --- | --- |
+| `build-dirs.txt` | Every directory in the extracted tree (`find build -type d`). | `manifests/build-dirs.txt` |
+| `build-manifest.txt` | Full file-by-file manifest of the extracted package (~287 KB). | repo root (pending move) |
+| `build-sizes.txt` | Per-file sizes for the extracted package (~291 KB). | repo root (pending move) |
+
+> `build-manifest.txt` and `build-sizes.txt` are large binaries-of-text and
+> are still at the repo root. To finish grouping them here, run:
+>
+> ```bash
+> git mv build-manifest.txt build-sizes.txt manifests/
+> git commit -m "Move remaining manifests into manifests/"
+> ```
 
 ## Note on version
 
