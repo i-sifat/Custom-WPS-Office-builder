@@ -193,3 +193,135 @@ Redirect known WPS/Kingsoft endpoints to loopback to sever updates, telemetry, a
 2. **`kstartpage`** **/** **`kapplist`** **/** **`knewdocs`** — mixed local+online; trim rather than nuke.
 3. **`DEBIAN/postinst`** — edit, don't delete; keep mime/desktop registration, strip update/telemetry/cron.
 4. **`knetwork`** — keep the lib, block the domains instead of deleting.
+
+# Full-Manifest Expansion — Newly Confirmed Components
+
+# Full-Manifest Expansion (v2)
+This page **supplements** the first page using the complete `build-manifest.txt` (now readable in full). It adds every component that wasn't visible in the earlier truncated slice. Where this page and page 1 overlap, **this page is authoritative**. Golden rule unchanged: never delete `mui/default/` or `mui/en_US/`; English falls back to the embedded/base strings when a locale `.qm` is absent.
+
+* * *
+## Section A (expanded) — Language Resources
+### A.5 Multi-language addons discovered in the full manifest
+Two big addons ship a **wide** set of non-English locales (not just zh/ja). Delete every non-`default`/`en_US` locale dir under them.
+
+**`officespace/mui/`** — locales present: `de_DE`, `es_ES`, `fr_FR`, `pt_BR`, `pt_PT`, `ru_RU`, `zh_CN`, `zh_TW` (+ `default`, `en_US`). Each holds `officespace.qm` and a `resource/{downloading,qing_plugins}.data`.
+
+**`qing/mui/`** — locales present: `de_DE`, `es_ES`, `fr_FR`, `pt_BR`, `pt_PT`, `ru_RU`, `zh_CN`, `zh_TW` (+ `default`, `en_US`). Each holds `qingaccount.data` + `res/qingaccount/errPage.html`.
+
+| Delete (non-English locale dirs) | Langs | Safety |
+| ---| ---| --- |
+| addons/officespace/mui/{de\_DE,es\_ES,fr\_FR,pt\_BR,pt\_PT,ru\_RU,zh\_CN,zh\_TW}/ | de,es,fr,pt,ru,zh | Safe (but see C: officespace itself is an online addon → likely removed wholesale) |
+| addons/qing/mui/{de\_DE,es\_ES,fr\_FR,pt\_BR,pt\_PT,ru\_RU,zh\_CN,zh\_TW}/ | de,es,fr,pt,ru,zh | Safe (qing is the cloud-account addon → likely removed wholesale, see C) |
+
+### A.6 Additional non-English `.qm` confirmed (delete; keep `en_US`/`default`)
+`koptioncenter/mui/{zh_CN,zh_TW}/koptioncenter.qm` · `kphoneticsymbol/mui/zh_CN/kphoneticsymbol.qm` · `kpromeaccountpanel/mui/zh_CN/…qm` · `kpromebrowser/mui/zh_CN/…qm` · `kpromeprocesson/mui/zh_CN/…qm` · `kpromewebapp/mui/zh_CN/…qm` · `kpromeworkarea/mui/zh_CN/…qm` · `kqingdlg/mui/zh_CN/kqingdlg.qm` · `kqrcode/mui/zh_CN/kqrcode.qm` · `kscreengrab/mui/{ja_JP,zh_CN}/kscreengrab.qm` · `kskincenter/mui/zh_CN/kskincenter.qm` · `ksoformatproof/mui/zh_CN/ksoformatproof.qm` · `kstartpage/mui/{ja_JP,zh_CN,zh_TW}/kstartpage.qm` · `kusercenter/mui/zh_CN/kpromeusercenter.qm` · `pdfbatchcompression/mui/zh_CN/pdfbatchcompressionapp.qm` · `wpsbox/mui/zh_CN/wpsbox.qm` · `kweibo/mui/zh_CN/kweibo.qm` (keep `kweibo/mui/en_US/kweibo.qm` only if kweibo is kept — see C) · `wppcapturer/mui/zh_CN/common.qm` · `wppencoder/mui/zh_CN/common.qm` · `knewshare/mui/{zh_CN,zh_TW}/knewshare.qm`.
+> **Keep the matching** **`en_US`** **`.qm`** for any addon you retain: `knewshare/mui/en_US`, `officespace/mui/en_US`, `qing/mui/en_US`, `kweibo/mui/en_US`, `wppcapturer/mui/en_US`, `wppencoder/mui/en_US`.
+### A.7 Chinese language DATA (not UI) — **Verify first**
+These are Chinese-language processing assets under `office6/data/`. They do **not** affect English editing, but some engines expect the files to exist:
+
+| Path | What it is | Safety |
+| ---| ---| --- |
+| data/chinesesegment/ (friso engine + ~30 lex files, dict/, [LICENSE.md](http://LICENSE.md)) | Chinese word-segmentation dictionaries | Verify first — safe for English use, but confirm [libfriso.so](http://libfriso.so) doesn't hard-require them at load; if it does, keep the dir or replace with empty lex files |
+| data/Pinyin.dic, data/PinyinTagger(.so), data/CharDic.dic, data/WordDic.dic, data/words\_bin.dat, data/unigram.dat, data/extend\_dict.dat | Chinese pinyin/word dictionaries | Verify first — Chinese-only features (pinyin sort, phonetic); removal usually safe but test sort/proofing |
+| data/{location,person}\_{emit,roles,trans}.dat, firrule.dic, secrule.dic | NER / smart-recognition models (CN) | Verify first — likely tied to Chinese smart features |
+
+### A.8 English dictionaries — **KEEP (do not delete)**
+*   `dicts/spellcheck/en_US/` (main.aff, main.dic, dict.conf, README/Changelog) — **KEEP**
+*   `dicts/spellcheck/en_CH/` (main.aff, main.dic, dict.conf) — **KEEP** (English variant)
+### A.9 CEF locales (restated)
+`addons/cef/locales/`: delete `zh-CN.pak`; keep `en-US.pak`; `en-GB.pak` optional.
+
+* * *
+## Section B (expanded) — Telemetry / Push / Update / Diagnostics
+Newly confirmed components:
+
+| Full path (under build/) | Purpose (likely) | Action | Side effects |
+| ---| ---| ---| --- |
+| addons/messagepush/libmessagepush.so | Message/notification push channel (phones home) | Replace with dummy .so | No in-app news/push; no core impact |
+| addons/cloudpushsdk/libcloudpushsdk.so | Cloud push SDK | Replace with dummy .so | As above |
+| addons/secanalyze/secanalyze.xml | "Security analyze" config — usage/diagnostic collection | Remove or blank | Verify first; likely no core impact |
+| addons/kfeedback/\* (lib + db/personal\_cn/\*.db ~12.8 MB) + kfeedbackcmds | Feedback / usage reporting | Remove / dummy | Feedback UI dead |
+| office6/libkprometheus.so + desktops/wps-office-prometheus.desktop | "Prometheus" web-app runtime + its launcher entry | Verify first | Removing the .desktop hides the Prometheus app; the lib may be referenced by kprome\* addons — dummy rather than delete unless all kprome\* go too |
+| office6/libpaho-mqtt3as.so.1.3.9 | MQTT client lib — persistent push/telemetry transport | Verify first (keep file, block network) | Deleting may break a component that links it; neutralise via Section D instead |
+| office6/libkdownload.so | Generic downloader (updates/templates/fonts) | Verify first | Used by multiple online features; block network rather than delete |
+| office6/libKMailLib.so.71 + cfgs/smtp.xml | Mail/SMTP (feedback/share-by-email) | Verify first / remove smtp.xml contents | Email-share feature dead; no core impact |
+| DEBIAN/postinst (42K), prerm (25K), preinst (3.4K), postrm (2.1K) | Maintainer scripts | Verify first → edit, don't delete | Keep mime/desktop registration & symlinks; strip any update/telemetry/cron/daemon setup. Audit all four for network calls (the oversized postinst/prerm are the priority) |
+
+**Still not present in the manifest:** no standalone auto-updater binary or `etc/cron.d` / `etc/xdg/autostart` entries appear in the readable portion. Section B of page 1 listed those as _candidates_; treat them as **Verify first / may not exist** — confirm with `ls build/etc/cron.d build/etc/xdg/autostart` and by grepping `postinst` for `crontab`, `systemctl`, `update`.
+
+* * *
+## Section C (expanded) — Online Features
+Major online subsystems revealed by the full manifest (all safe to remove for offline editing; remove the addon dir wholesale unless noted):
+
+| Addon / path | Feature | Action | Affects offline editing? |
+| ---| ---| ---| --- |
+| addons/qing/ ([libqingbangong.so](http://libqingbangong.so), rpc.cfg, huge mui tree: cloud disk, login, wechat login, vip payment, trusted device, new-user guide) | Kingsoft "Qing" cloud account + cloud drive — the core online/account subsystem | Remove | No — pure cloud/account |
+| addons/officespace/ ([libofficespace.so](http://libofficespace.so) + cloudlink\_cooperation, filedialog, qing\_plugins, usersecurecenter) | Cloud "office space" / collaboration surface | Remove | Verify first — ensure the local Open/Save dialog isn't routed through officespace's [filedialog.data](http://filedialog.data); keep local file dialog |
+| addons/wpsbox/ ([libwpsbox.so](http://libwpsbox.so) + cloudsettings, filetransfer, sharefolder, syncfolder, teamevent, teammember, msgchannel, recommend, documentassistant) | WPS cloud box: sync, file transfer, team/share, recommendations | Remove | No |
+| addons/kweibo/ ([libkweibo.so](http://libkweibo.so) + weibo/\*) | Weibo (Chinese social) sharing | Remove | No |
+| addons/shareplay/libshareplay.so | SharePlay real-time online presentation sharing | Remove | No |
+| addons/konlinefileconfig/ (lib + res: onlinefileconfig.xml, icon.rcc) | Online file-type config | Remove / Verify first | Verify first — confirm it's not consulted for local file associations |
+| addons/kwebextensionlist/ (config.ini, kwebextensionlist.cfg, webshapenotices.txt) | Web extension/shape list (online content) | Remove | Verify first — "webshapes" may back some insertable shapes |
+| addons/linkeddatatype/linkdata.json | Linked data types (online-backed cell types) | Remove | No |
+| addons/kappcenter/, kapplist/, kappmgr/, kappentryobject/ | App center / tool list (mix of local PDF/photo tools + cloud engines like papercheck, papertypeset) | Verify first — trim, don't nuke | Some listed tools (pdf split/merge, photo tools) are local; deleting the whole applist removes them too |
+| addons/kstartpage/ | Start page (online recommendations + local nav via res/kuip/officenav.kui) | Verify first | Start page is the launcher shell; prefer trimming its web/htmlep content over deleting the addon |
+| addons/knewdocs/ (res/ online template gallery) | New-doc / online templates | Trim online; KEEP res/blanktemplate/\*.pptx | Verify first — local blank templates live here |
+| addons/kprome\* (accountpanel, browser, processon, webapp, workarea) | "Prometheus" web-app suite | Remove (+ dummy [libkprometheus.so](http://libkprometheus.so) if all removed) | No |
+| addons/kclouddocs/, kcloudfiledialog/, kusercenter/, knewshare/, kqingdlg/, kqrcode/ | Cloud docs, cloud dialog, account, sharing, cloud dialogs, QR handoff | Remove (kqrcode/konlinefileconfig: Verify first) | No (verify kcloudfiledialog doesn't replace local dialog) |
+| addons/cef/ (~190 MB) + kcef/ + jsapi/ | Chromium Embedded Framework + bridge + JS-API HTTP server | Verify first (biggest win, highest coupling) | Removes ALL in-app web UI; core editing does not need it — confirm launcher/start page still opens first |
+
+### C.1 Config files that point at online services (edit, don't delete blindly)
+*   `office6/cfgs/domain_qing.cfg` — **cloud service domain map**; best single source for Section D endpoints. **Verify first / edit**: blanking it helps sever cloud, but a malformed file may error — prefer pointing entries at `127.0.0.1`.
+*   `office6/cfgs/cacert.pem` — CA bundle used by `libcurl`/TLS. **KEEP** (removing breaks any HTTPS the app still needs, e.g. license checks you may leave intact).
+*   `office6/cfgs/{ksoapp,setup,feature,product}.dat/.cfg`, `oem.ini`, `jside.cfg` — feature/product flags. **Verify first**: `feature.dat` / `oem.ini` may let you disable cloud/account features cleanly via config rather than file deletion (preferred).
+*   `addons/qing/rpc.cfg`, `addons/knetwork/rpclimit.cfg` — RPC endpoint/limits. **Verify first**.
+### C.2 Core libraries — **KEEP (required for local editing)**
+`libetmain.so`, `libetapi.so`, `libexcelrw.so`, `libetxmlrw.so` (Spreadsheets) · `libpptreader.so`, `libpptwriter.so`, `libpptxrw.so`, `libplayer.so` (Presentation) · `libdocwriter.so`, `libhtml2.so`, `libhtmlpub.so` (Writer) · `libpdfmain.so`, `libqpdfpaint.so` (PDF) · `libkso.so`, `libksolite.so`, `libksoapi.so`, `libksmso.so` · all `libQt5*Kso.so.5.12.10` · `libicu*`, `libcrypto/ssl/nss*`, `libhunspell.so` (English spellcheck), `libmythes.so` (thesaurus). Do **not** remove these.
+> **Caution — auth/account libs:** `libauth.so`, `libkqingaccountsdk.so`, `libqingipc.so` support login/account. They _look_ removable, but core binaries may link them at startup. **Verify first** — prefer disabling account UI (via config + removing the account addons) over deleting these base libs, to avoid a failed launch.
+* * *
+## Section D (expanded) — Network Blocklist
+**Best source of truth in this package:** `office6/cfgs/domain_qing.cfg` — inspect it and add every host it lists. Until then, the page‑1 `/etc/hosts` block stands, plus these additions implied by the newly found subsystems (weibo, shareplay, mqtt push, mail):
+
+```plain
+# ---- Additions from full-manifest analysis (Verify against cfgs/domain_qing.cfg) ----
+# Push / MQTT / messaging
+0.0.0.0 push.wps.cn
+0.0.0.0 mqtt.wps.cn
+0.0.0.0 msg.wps.cn
+0.0.0.0 minfo.wps.cn
+
+# Weibo / social share
+0.0.0.0 share.wps.cn
+0.0.0.0 weibo.com
+0.0.0.0 api.weibo.com
+
+# SharePlay / collaboration / office space
+0.0.0.0 shareplay.wps.cn
+0.0.0.0 cooperation.wps.cn
+0.0.0.0 group.wps.cn
+
+# Qing cloud RPC / account SDK
+0.0.0.0 qingrpc.wps.cn
+0.0.0.0 kdocs.cn
+0.0.0.0 www.kdocs.cn
+
+# Templates / "docer" / recommend
+0.0.0.0 recommend.wps.cn
+0.0.0.0 newdocs.wps.cn
+```
+
+> Prefer a DNS sinkhole / egress firewall on the parent domains (`wps.cn`, `wps.com`, `wpscdn.cn`, `kdocs.cn`, `weibo.com`) over maintaining per-host lines. All entries remain **Verify first** — confirm against live DNS traffic and `domain_qing.cfg`.
+* * *
+## Updated space-savings highlights
+*   `addons/cef/` ([libcef.so](http://libcef.so) 165M + GLESv2 6.7M + icudtl 11M + swiftshader 2.5M + paks): **~190 MB**
+*   `addons/qing/` + `officespace/` + `wpsbox/` (large multi-locale web trees): **tens of MB**
+*   `kfeedback/db/personal_cn/*.db`: **~12.8 MB**
+*   `data/chinesesegment/` (friso lex set): **several MB** (Verify first)
+*   Non-English `.qm`/locale dirs across ~25 addons + multi-locale `qing`/`officespace`: **several MB**
+## Priority "Verify first before running" (behaviour-changing)
+1. **CEF removal** — huge win, disables all web panels; confirm launcher opens.
+2. **Base auth libs** (`libauth.so`, `libkqingaccountsdk.so`, `libqingipc.so`) — disable via config, don't delete, to avoid launch failure.
+3. **`cfgs/feature.dat`** **/** **`oem.ini`** **/** **`domain_qing.cfg`** — prefer disabling cloud/account and rerouting domains via config over raw file deletion.
+4. **`data/chinesesegment/`** **+ Chinese dicts** — safe for English, but test that segmentation/proofing libs still load.
+5. **`kapplist`****/****`kstartpage`****/****`knewdocs`** — trim online entries; keep local tools & blank templates.
+6. **`DEBIAN/postinst`** **&** **`prerm`** — edit to strip telemetry/update while preserving mime/desktop registration.
