@@ -1,0 +1,195 @@
+# CLEANING_MAP.md — WPS Office (English-only, Offline)
+
+# CLEANING\_MAP.md
+**Package:** WPS Office for Linux (`.deb`), extracted under `build/`
+**Install root:** `/opt/kingsoft/wps-office/` (Debian/Ubuntu layout assumed)
+**Goal:** English-only, fully offline install — telemetry, auto-update, and online-only services removed or disabled — while preserving local document editing (WPS Writer / Spreadsheets / Presentation / PDF).
+**Source repo:** `i-sifat/Custom-WPS-Office-builder`
+> **Scope / confidence note.** This map is built from `build-manifest.txt`, `build-dirs.txt`, and `build-sizes.txt`. The manifest (~287 KB) is large and only partially visible in the shared attachments, so the file-by-file lists below are **exhaustive for every path I could confirm** and **pattern-complete** for the rest (e.g. "every `mui/zh_CN/*.qm` under `office6/addons/`"). Items I could not individually confirm are marked **Verify first**. The repo already contains `clean.sh` and `cleaner.sh`; this map should be cross-checked against them (happy to review those next).  
+> **Golden rule applied throughout:** never delete `mui/default/` or `mui/en_US/` — those carry the English/base UI. WPS falls back to embedded English when a non-English `.qm` is missing, so removing `zh_CN` / `zh_TW` / `ja_JP` translations is non-destructive to English users.
+* * *
+## Section A — Language Resources
+Removing non-English locale assets keeps English fully functional. Three asset classes are involved: Qt translations (`.qm`), web/i18n string bundles (`.properties`), and CEF UI locale packs (`.pak`).
+### A.1 Qt translation files (`.qm`) — non-English
+Pattern: `office6/addons/<addon>/mui/{zh_CN,zh_TW,ja_JP}/<addon>.qm`. Confirmed instances:
+
+| Full path (under build/) | Lang | Type | Est. size | Safety |
+| ---| ---| ---| ---| --- |
+| opt/…/addons/docpermission/mui/zh\_CN/docpermission.qm | zh\_CN | file | 78K | Safe to delete |
+| opt/…/addons/kappcenter/mui/zh\_CN/kappcenter.qm | zh\_CN | file | 24K | Safe to delete |
+| opt/…/addons/kautofindcontents/mui/zh\_CN/kautofindcontents.qm | zh\_CN | file | 557B | Safe to delete |
+| opt/…/addons/kbarcode/mui/ja\_JP/kbarcode.qm | ja\_JP | file | 252B | Safe to delete |
+| opt/…/addons/kbarcode/mui/zh\_CN/kbarcode.qm | zh\_CN | file | 234B | Safe to delete |
+| opt/…/addons/kbarcode/mui/zh\_TW/kbarcode.qm | zh\_TW | file | 228B | Safe to delete |
+| opt/…/addons/kclouddocs/mui/zh\_CN/kclouddocs.qm | zh\_CN | file | 496B | Safe to delete |
+| opt/…/addons/kclouddocs/mui/zh\_TW/kclouddocs.qm | zh\_TW | file | 248B | Safe to delete |
+| opt/…/addons/kcloudfiledialog/mui/zh\_CN/kcloudfiledialog.qm | zh\_CN | file | 12K | Safe to delete |
+| opt/…/addons/kfeedback/mui/zh\_CN/kfeedback.qm | zh\_CN | file | 1.7K | Safe to delete |
+| opt/…/addons/khelp/mui/zh\_CN/khelp.qm | zh\_CN | file | 3.9K | Safe to delete |
+| opt/…/addons/kjsapipage/mui/zh\_CN/kjsapipage.qm | zh\_CN | file | 93B | Safe to delete |
+| opt/…/addons/knewdocs/mui/zh\_CN/knewdocs.qm | zh\_CN | file | 5.3K | Safe to delete |
+
+**Directory-level removal (all non-English** **`mui`** **locale dirs).** The dir listing shows the same three locale codes repeated across most addons. Safe to delete every one of these directories wholesale:
+*   `mui/zh_CN/` — under: docpermission, kappcenter, kautofindcontents, kbarcode, kclouddocs, kcloudfiledialog, kfeedback, khelp, kjsapipage, knewdocs, knewshare, koptioncenter, kphoneticsymbol, kpromeaccountpanel, kpromebrowser, kpromeprocesson, kpromewebapp, kpromeworkarea, kqingdlg, kqrcode, kscreengrab, kskincenter, ksoformatproof, kstartpage, kusercenter (+ any others in the full tree)
+*   `mui/zh_TW/` — under: kbarcode, kclouddocs, koptioncenter, kpromeaccountpanel(?), kstartpage, kusercenter, kskincenter (+ others)
+*   `mui/ja_JP/` — under: kbarcode, kscreengrab, kstartpage (+ others)
+*   `shellext/mui/zh_CN/tr.xml` (kapplist) — 5.0K — **Safe to delete**
+
+**Keep:** `mui/default/` and `mui/en_US/` everywhere (e.g. `addons/knewshare/mui/en_US/`).
+
+**Verify first:** A handful of addons ship **only** a `zh_CN` `.qm` and no `default`/`en_US` (e.g. `kclouddocs`, `kcloudfiledialog`, `kqingdlg`). These addons are China/cloud-oriented and are also removal candidates in Section C — deleting their translations is safe, but confirm the addon itself is being removed rather than left half-localised.
+### A.2 Web/i18n string bundles (`.properties`) — non-English
+`office6/addons/kbarcode/mui/default/i18n/`:
+
+| File | Lang | Size | Safety |
+| ---| ---| ---| --- |
+| strings\_ja-JP.properties | ja | 385B | Safe to delete |
+| strings\_ja.properties | ja | 385B | Safe to delete |
+| strings\_zh-CN.properties | zh | 284B | Safe to delete |
+| strings\_zh.properties | zh | 284B | Safe to delete |
+| strings\_zh-TW.properties | zh | 278B | Safe to delete |
+| strings\_en-US.properties | en | 248B | KEEP |
+| [strings.properties](http://strings.properties) (default) | base | 284B | KEEP |
+
+Apply the same `strings_{zh*,ja*}.properties` deletion pattern to any other web-addon `i18n/` folder in the full tree (**Verify first** per folder — some use the base `strings.properties` as English).
+### A.3 CEF UI locale packs (`.pak`)
+`office6/addons/cef/locales/`:
+
+| File | Lang | Size | Safety |
+| ---| ---| ---| --- |
+| zh-CN.pak | zh | 244K | Safe to delete |
+| en-GB.pak | en (GB) | 238K | Safe to delete (optional; keep en-US) |
+| en-US.pak | en | 240K | KEEP |
+
+Only relevant if CEF is retained (see Section C.1). If CEF is removed entirely, the whole `locales/` folder goes with it.
+### A.4 Language-adjacent data — Verify first
+*   `office6/addons/kphoneticsymbol/` (pinyin) — Chinese phonetic input helper. **Verify first**: irrelevant to English editing, safe to remove, but confirm it is not wired into a shared spell/proofing path.
+*   `office6/addons/ksoformatproof/` — format/proofing. **Verify first**: proofing may be language-tied; keep the addon, only drop its `mui/zh_CN`.
+*   `khelp.data` / help HTML (`addons/khelp/mui/default/html/`) — help content; keep `default`, drop `zh_CN`.
+> Not all languages may be fully enumerated above — the full manifest likely contains additional locale folders (and possibly a top-level `office6/mui/<lang>` tree and dictionaries) beyond the visible slice. Recommend a final sweep with: `find build -type d \( -name 'zh_CN' -o -name 'zh_TW' -o -name 'ja_JP' -o -name 'ko_KR' -o -name '*_CN' \)` and `find build -name '*.qm' ! -path '*/en_US/*'`.
+* * *
+## Section B — Telemetry, Analytics, Crash Reporting & Update Components
+
+| Full path (under build/) | Purpose (likely) | Action | Possible side effects |
+| ---| ---| ---| --- |
+| opt/…/addons/kfeedback/libkfeedback.so | User feedback / usage reporting engine | Replace with dummy .so (or remove) | "Feedback" menu item dead; no core impact |
+| opt/…/addons/kfeedbackcmds/libkfeedbackcmds.so | Feedback command hooks | Remove | Feedback commands unavailable |
+| opt/…/addons/kfeedback/db/personal\_cn/{et,pdf,wpp,wps}.db | Feedback content DBs (CN) — ~12.8 MB total (4.4M+3.7M+3.0M+1.7M) | Remove | None; pure data payload |
+| opt/…/addons/cloudpushsdk/libcloudpushsdk.so | Cloud push / notification SDK (phones home) | Replace with dummy .so | No push notifications; no core impact. Verify no hard dependency at startup |
+| etc/xdg/autostart/\* | Background autostart entries (updater / daemon) | Remove | Stops background services launching at login — desired |
+| etc/cron.d/\* | Scheduled jobs (likely update/telemetry check) | Remove | No scheduled callbacks — desired |
+| etc/logrotate.d/\* | Rotation for WPS logs | Remove (optional) | Cosmetic; only matters if logs are disabled |
+| DEBIAN/postinst (42K) | Post-install script — registers services, may enable update/telemetry, mime, symlinks | Verify first → edit | Must keep desktop/mime registration; strip only update/telemetry/cron setup. Do NOT blindly delete |
+| DEBIAN/prerm (25K) / postrm / preinst | Maintainer scripts | Verify first | Needed for clean install/removal; audit for network calls |
+| opt/…/addons/knetwork/libknetwork.so + rpclimit.cfg | Core network/RPC layer used by online addons | Verify first (keep, neutralise via blocklist) | Removing may break addons that dynamically link it; prefer the Section D network block over deletion |
+
+**Notes**
+*   **"Replace with dummy" vs "remove":** For `.so` files that other libraries may `dlopen`/link at startup, replacing with an empty/stub library (same filename) is safer than deleting — it avoids missing-symbol crashes while killing the behaviour. `kfeedback` and `cloudpushsdk` are prime dummy-replacement candidates.
+*   **Auto-update:** No standalone updater binary is clearly visible in the shared slice. WPS Linux typically performs update/telemetry via `postinst` + autostart + the network layer rather than a dedicated daemon. **Verify first** by grepping the full manifest for `update`, `upgrade`, `daemon`, `push`, `report`, `stat`, `crash`.
+
+* * *
+## Section C — Online Features
+These enable accounts, cloud, online templates/fonts, and web-powered panels. None are required for local document editing, but several share the CEF/network stack, so removal order matters.
+
+| Full path (under build/) | Feature | Action | Affects offline editing? |
+| ---| ---| ---| --- |
+| opt/…/addons/cef/ ([libcef.so](http://libcef.so) 165M, \*.pak, icudtl.dat, swiftshader/…) | Chromium Embedded Framework — renders all in-app web panels | Verify first | Indirect: removing it disables start page, online templates, account panels. Core Writer/Sheets/Slides/PDF editing does NOT need CEF, but confirm before deleting ~180 MB |
+| opt/…/addons/kcef/ (libjscefservice, libkbrowserclient, libkcefrender, libkcefwebview) | WPS↔CEF bridge / webview host | Remove (with CEF) | No — only web panels |
+| opt/…/addons/jsapi/ (libjsapihttpserver, libjsapisubserver, libnativex) | Local JS-API HTTP bridge for web content | Remove / dummy | No — used by online panels |
+| opt/…/addons/kclouddocs/ | Cloud documents | Remove | No |
+| opt/…/addons/kcloudfiledialog/ | Cloud open/save dialog | Remove | Verify first — ensure local file dialog remains the default |
+| opt/…/addons/kusercenter/ | Account / login / user center | Remove | No |
+| opt/…/addons/knewshare/ | Cloud sharing / share folders | Remove | No |
+| opt/…/addons/kqingdlg/ | "Qing" (Kingsoft cloud) dialogs | Remove | No |
+| opt/…/addons/kskincenter/ | Online skin/theme download | Remove | No — bundled themes may also live here; Verify first before deleting whole dir |
+| opt/…/addons/konlinefileconfig/ | Online file configuration | Remove | No |
+| opt/…/addons/kappcenter/ + kapplist/ | App center / online tool list (papercheck, papertypeset, pdf2\* cloud engines) | Verify first | Some listed tools are local; deleting the whole applist removes local PDF/photo tools too. Prefer trimming online-only entries |
+| opt/…/addons/kstartpage/ | Start page (online recommendations) | Remove / dummy | Verify first — start page is the launcher UI; removing may drop you straight into a blank workspace |
+| opt/…/addons/kprome\* (kpromeaccountpanel, kpromebrowser, kpromeprocesson, kpromewebapp, kpromeworkarea) | "Prometheus" web-app / account / process-online suite | Remove | No — all web-powered |
+| opt/…/addons/kqrcode/ | QR (often for mobile/cloud handoff) | Verify first | Likely no; may be used by local share-to-image |
+| opt/…/addons/knewdocs/res/ (online template browser: CloudTab.svg, bg-neterror.png, loadingOutlines.gif) | Online template gallery | Trim online, keep local | Verify first — KEEP res/blanktemplate/\*.pptx (local blank docs); remove only the cloud-gallery web assets |
+| opt/…/addons/kclouddocs/…/error-cefabort, error-page | Web error pages | Remove with kclouddocs | No |
+
+**Recommended removal order (avoids crashes):** disable at the addon-registry/config level first → then remove the `kprome*`, `kclouddocs`, `kusercenter`, `knewshare`, `kqingdlg`, `konlinefileconfig` addons → then `kcef`/`jsapi` → **last**, decide on `cef/` (biggest space win, highest coupling). Keep `knetwork` in place but neutralise it via Section D.
+
+* * *
+## Section D — Network Blocklist (`/etc/hosts` style)
+Redirect known WPS/Kingsoft endpoints to loopback to sever updates, telemetry, accounts, cloud, templates, fonts, CDN and licensing — without touching binaries. `/etc/hosts` does **not** support wildcards, so each subdomain is listed explicitly; for full coverage prefer a DNS sinkhole (dnsmasq/Pi-hole `address=/wps.cn/0.0.0.0`) or firewall egress rule on the parent domains.
+
+```plain
+# ---- WPS Office / Kingsoft blocklist (Verify first; english-only offline build) ----
+# Accounts / login
+0.0.0.0 account.wps.com
+0.0.0.0 accounts.wps.cn
+0.0.0.0 account.wps.cn
+0.0.0.0 accountserver.wps.cn
+
+# Telemetry / analytics / crash / feedback
+0.0.0.0 data.wps.cn
+0.0.0.0 dl.wps.cn
+0.0.0.0 stat.wps.cn
+0.0.0.0 log.wps.cn
+0.0.0.0 crash.wps.cn
+0.0.0.0 feedback.wps.cn
+
+# Updates
+0.0.0.0 update.wps.cn
+0.0.0.0 updateservice.wps.cn
+0.0.0.0 update.wps.com
+0.0.0.0 versionupgrade.wps.cn
+
+# Cloud storage / documents ("Qing" drive)
+0.0.0.0 drive.wps.cn
+0.0.0.0 qing.wps.cn
+0.0.0.0 vip.wps.cn
+0.0.0.0 open.wps.cn
+0.0.0.0 clouddocs.wps.cn
+
+# Templates (Docer) / online fonts / plugins
+0.0.0.0 docer.wps.cn
+0.0.0.0 docer.wpscdn.cn
+0.0.0.0 font.wps.cn
+0.0.0.0 fonts.wpscdn.cn
+0.0.0.0 plugin.wps.cn
+0.0.0.0 plugins.wps.cn
+
+# Licensing / activation
+0.0.0.0 license.wps.cn
+0.0.0.0 activate.wps.cn
+
+# API / gateways / push
+0.0.0.0 api.wps.cn
+0.0.0.0 gw.wps.cn
+0.0.0.0 push.wps.cn
+0.0.0.0 msg.wps.cn
+
+# CDN
+0.0.0.0 res.wpscdn.cn
+0.0.0.0 res1.wpscdn.cn
+0.0.0.0 img.wpscdn.cn
+0.0.0.0 cdn.wps.cn
+
+# International / misc Kingsoft
+0.0.0.0 www.wps.com
+0.0.0.0 wps.com
+0.0.0.0 kingsoft.com
+0.0.0.0 ksord.com
+0.0.0.0 kso.cn
+0.0.0.0 wpscloudsvr.com
+```
+
+> **Verify first (all of Section D).** These hosts are compiled from WPS/Kingsoft's known naming scheme and community block lists; the exact subdomains contacted by _this_ build should be confirmed by watching live DNS/traffic (e.g. `sudo tcpdump -n port 53`, or check strings in `libknetwork.so` / config files). Blocking the parent domains `wps.cn` / `wps.com` / `wpscdn.cn` at the DNS/firewall layer is the most robust option. Do not add `0.0.0.0 localhost`\-type entries and keep this block clearly delimited so it's easy to revert.
+* * *
+## Summary of expected space savings (from visible sizes)
+*   Feedback DBs (`kfeedback/db/personal_cn/`): **~12.8 MB**
+*   CEF stack (`cef/` incl. `libcef.so` 165M, `libGLESv2.so` 6.7M, `icudtl.dat` 11M, swiftshader 2.5M, paks): **~190 MB** (if CEF removed)
+*   `kcef/` webview libs: **~4.2 MB**
+*   Non-English `.qm` / `.pak` / `.properties`: **~0.5–1 MB** (small individually; larger once full tree swept)
+*   `kfpccomb` / `docpermission` / cloud addons: several MB more depending on removal choices
+
+**Biggest wins:** the CEF stack and feedback DBs. **Lowest risk:** non-English `.qm`/`.pak` deletions and the `/etc/hosts` block.
+## Do-this-carefully list (behaviour-changing — decide before running)
+1. **CEF removal** — large win but disables all in-app web UI; confirm start page/launcher still opens.
+2. **`kstartpage`** **/** **`kapplist`** **/** **`knewdocs`** — mixed local+online; trim rather than nuke.
+3. **`DEBIAN/postinst`** — edit, don't delete; keep mime/desktop registration, strip update/telemetry/cron.
+4. **`knetwork`** — keep the lib, block the domains instead of deleting.
