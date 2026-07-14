@@ -1,6 +1,3 @@
-# CLEANING_MAP.md — WPS Office (English-only, Offline)
-
-# CLEANING\_MAP.md
 **Package:** WPS Office for Linux (`.deb`), extracted under `build/`
 **Install root:** `/opt/kingsoft/wps-office/` (Debian/Ubuntu layout assumed)
 **Goal:** English-only, fully offline install — telemetry, auto-update, and online-only services removed or disabled — while preserving local document editing (WPS Writer / Spreadsheets / Presentation / PDF).
@@ -193,11 +190,6 @@ Redirect known WPS/Kingsoft endpoints to loopback to sever updates, telemetry, a
 2. **`kstartpage`** **/** **`kapplist`** **/** **`knewdocs`** — mixed local+online; trim rather than nuke.
 3. **`DEBIAN/postinst`** — edit, don't delete; keep mime/desktop registration, strip update/telemetry/cron.
 4. **`knetwork`** — keep the lib, block the domains instead of deleting.
-
-# Full-Manifest Expansion — Newly Confirmed Components
-
-# Full-Manifest Expansion (v2)
-This page **supplements** the first page using the complete `build-manifest.txt` (now readable in full). It adds every component that wasn't visible in the earlier truncated slice. Where this page and page 1 overlap, **this page is authoritative**. Golden rule unchanged: never delete `mui/default/` or `mui/en_US/`; English falls back to the embedded/base strings when a locale `.qm` is absent.
 
 * * *
 ## Section A (expanded) — Language Resources
