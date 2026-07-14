@@ -22,6 +22,8 @@ set -euo pipefail
 #   * Hard keep-list: mui/default, mui/en_US, English spellcheck dicts.
 #   * Base auth libs (libauth.so, libkqingaccountsdk.so, libqingipc.so) are
 #     NEVER deleted - the suite fails to launch without them.
+#   * konlinefileconfig is NEVER deleted - libkprometheus.so dlopen()s
+#     libkonlinefileconfig.so at startup (see Section C).
 #   * Missing targets are logged and skipped, so re-runs are idempotent.
 #
 # Usage:
@@ -159,15 +161,34 @@ log ""
 # SECTION C - Online-only Features (cloud / account / web)
 # =============================================================================
 log "[C] Removing online-only add-ons..."
+# NOTE: konlinefileconfig is intentionally NOT in this removal list.
+# Although it is an "online"-named addon, libkprometheus.so (the Prometheus /
+# fusion UI runtime, which is still shipped and loaded at startup) dlopen()s
+# libkonlinefileconfig.so from this addon. Deleting it makes EVERY app fail to
+# launch - the wrapper swallows the error and exits 0 silently, and running the
+# binary directly shows:
+#   dlopen .../office6/libkprometheus.so failed, error:
+#   libkonlinefileconfig.so: cannot open shared object file: No such file or directory
+# Its online endpoints are already severed by the Section D network blocklist,
+# so keeping this local config lib is safe. Only drop it if libkprometheus.so
+# is ALSO removed/dummied and fusion mode is disabled in Office.conf.
 ONLINE_ADDONS=(
     qing officespace wpsbox kweibo shareplay
     kclouddocs kusercenter knewshare kqingdlg
-    konlinefileconfig kwebextensionlist linkeddatatype
+    kwebextensionlist linkeddatatype
     kpromeaccountpanel kpromebrowser kpromeprocesson kpromewebapp kpromeworkarea
 )
 for a in "${ONLINE_ADDONS[@]}"; do
     remove_path "$ADDONS/$a"
 done
+
+# Assert the Prometheus dependency survived (guards against regressions).
+konline_hit=$(find "$OFFICE6" -name "libkonlinefileconfig.so" -print -quit 2>/dev/null || true)
+if [[ -n "$konline_hit" ]]; then
+    log "  keep (Prometheus dep, do NOT delete): $konline_hit"
+else
+    log "  ! WARNING: libkonlinefileconfig.so not found - libkprometheus.so will fail to load at startup"
+fi
 
 # Embedded browser stack (CEF + bridge + JS-API) - the single biggest space win (~190 MB).
 CEF_ADDONS=(cef kcef jsapi kjsapipage)
