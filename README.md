@@ -3,11 +3,11 @@
 > Repackage the official WPS Office for Linux into a **lean, English-only, fully offline** `.deb` &mdash; telemetry, auto-update and cloud/online components stripped out, local document editing fully intact.
 
 <p align="left">
+  <a href="https://github.com/i-sifat/Custom-WPS-Office-builder/actions/workflows/build.yml"><img alt="Build" src="https://github.com/i-sifat/Custom-WPS-Office-builder/actions/workflows/build.yml/badge.svg"></a>
   <img alt="Platform" src="https://img.shields.io/badge/platform-Linux%20(.deb)-informational">
   <img alt="Arch" src="https://img.shields.io/badge/arch-amd64-blue">
   <img alt="Shell" src="https://img.shields.io/badge/made%20with-Bash-4EAA25?logo=gnubash&logoColor=white">
-  <img alt="CI" src="https://img.shields.io/badge/CI-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white">
-  <img alt="Status" src="https://img.shields.io/badge/status-working-success">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
 
 ---
@@ -148,4 +148,4 @@ This is an independent, personal project and is **not affiliated with, endorsed 
 
 ## License
 
-The **scripts and tooling in this repository** are released under the MIT License (add a `LICENSE` file to make this explicit). This license covers only the build tooling here &mdash; **not** WPS Office itself.
+The **scripts and tooling in this repository** are released under the [MIT License](LICENSE). This license covers only the build tooling here &mdash; **not** WPS Office itself.
