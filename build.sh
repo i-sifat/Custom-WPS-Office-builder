@@ -1,59 +1,69 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-# --- CONFIG ---
-WPS_URL="https://wdl1.pcfg.cache.wpscdn.com/wpscdn/w/download/linux/11723/wps-office_11.1.0.11723.XA_amd64.deb"
-# ^ Update this URL to the latest version from WPS official site
-DEB_NAME="wps-office.deb"
-BUILD_DIR="build"
-OUTPUT_DIR="output"
+# =============================================================================
+# build.sh - One-shot orchestrator for the custom WPS Office build
+# =============================================================================
+# Chains the single-purpose helper scripts in order:
+#   1. download.sh  -> download + extract the .deb into build/
+#   2. clean.sh     -> strip non-English/telemetry/online per CLEANING_MAP
+#   3. repack.sh    -> rebuild output/<pkg>_<ver>_<arch>.deb
+#
+# The download URL now lives in ONE place (download.sh) instead of being
+# duplicated here, so there is no second copy to drift out of date.
+#
+# Usage:
+#   ./build.sh              # full pipeline
+#   DRY_RUN=1 ./build.sh    # clean.sh previews deletions (still downloads/repacks)
+# =============================================================================
 
-# --- CLEANUP ---
-rm -rf "$BUILD_DIR" "$OUTPUT_DIR"
-mkdir -p "$BUILD_DIR/DEBIAN" "$OUTPUT_DIR"
+# Always run from the repo root, regardless of where the script is invoked.
+cd "$(dirname "$0")"
 
-# --- DOWNLOAD ---
-echo "[*] Downloading WPS Office..."
-wget -q --show-progress "$WPS_URL" -O "$DEB_NAME"
+LOG_FILE=".build.log"
 
-# --- EXTRACT ---
-echo "[*] Extracting .deb..."
-dpkg-deb -x "$DEB_NAME" "$BUILD_DIR"
-dpkg-deb -e "$DEB_NAME" "$BUILD_DIR/DEBIAN"
+log() {
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $1"
+    echo "$msg"
+    echo "$msg" >> "$LOG_FILE"
+}
 
-# --- REMOVE NON-ENGLISH LANGUAGES ---
-echo "[*] Removing non-English language files..."
-find "$BUILD_DIR" -type d -name "i18n" -exec rm -rf {} + 2>/dev/null || true
-find "$BUILD_DIR" -path "*/mui/*" ! -path "*/mui/en_US/*" ! -path "*/mui/en-US/*" -type d -exec rm -rf {} + 2>/dev/null || true
-find "$BUILD_DIR" -path "*/locales/*" ! -name "*en*" -type f -delete 2>/dev/null || true
-find "$BUILD_DIR" -name "*.qm" ! -name "*en*" -delete 2>/dev/null || true
+fatal() {
+    log "FATAL: $1"
+    exit 1
+}
 
-# --- REMOVE TELEMETRY / UPDATE CHECKS ---
-echo "[*] Removing telemetry..."
-# Remove update checker binary if it exists
-rm -f "$BUILD_DIR/opt/kingsoft/wps-office/office6/updateself" 2>/dev/null || true
-rm -f "$BUILD_DIR/opt/kingsoft/wps-office/office6/wpscloudsvr" 2>/dev/null || true
-# Block telemetry domains via hosts (optional, applied at install)
-mkdir -p "$BUILD_DIR/etc"
-cat >> "$BUILD_DIR/etc/hosts.wps-block" << 'EOF'
-# WPS Telemetry Blocklist
-127.0.0.1  wps.com
-127.0.0.1  www.wps.com
-127.0.0.1  account.wps.com
-127.0.0.1  drive.wps.com
-127.0.0.1  cloud.wps.com
-127.0.0.1  vip.wps.com
-127.0.0.1  ksops.wps.com
-EOF
+log ""
+log "=============================================================="
+log " build.sh - Custom WPS Office builder (English-only, offline)"
+log "=============================================================="
+log ""
 
-# --- UPDATE PACKAGE METADATA ---
-sed -i 's/Package: wps-office/Package: wps-office-custom/' "$BUILD_DIR/DEBIAN/control"
-sed -i 's/Version: /Version: custom-/' "$BUILD_DIR/DEBIAN/control"
-echo "Custom build: English-only, telemetry removed" >> "$BUILD_DIR/DEBIAN/control"
+# Make sure the helper scripts exist and are executable.
+for s in download.sh clean.sh repack.sh; do
+    [[ -f "$s" ]] || fatal "Missing required helper script: $s"
+done
+chmod +x download.sh clean.sh repack.sh cleaner.sh 2>/dev/null || true
 
-# --- REPACK ---
-echo "[*] Repacking .deb..."
-dpkg-deb --build "$BUILD_DIR" "$OUTPUT_DIR/wps-office-custom_amd64.deb"
+log "Step 1/3: download + extract  (./download.sh)"
+./download.sh
+log ""
 
-echo "[✓] Done: $OUTPUT_DIR/wps-office-custom_amd64.deb"
-ls -lh "$OUTPUT_DIR/"
+log "Step 2/3: clean               (./clean.sh)"
+./clean.sh
+log ""
+
+log "Step 3/3: repack              (./repack.sh)"
+./repack.sh
+log ""
+
+log "=============================================================="
+log " build.sh COMPLETE"
+log "=============================================================="
+if compgen -G "output/*.deb" > /dev/null; then
+    log "Artifact(s):"
+    ls -lh output/*.deb | sed 's/^/  /' | tee -a "$LOG_FILE"
+else
+    fatal "No .deb produced in output/ - check .download.log / .clean.log / .repack.log"
+fi
+log "Done!"
