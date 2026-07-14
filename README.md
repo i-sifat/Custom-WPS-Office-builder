@@ -99,6 +99,48 @@ sudo apt install ./output/wps-office-custom_*_amd64.deb
 | `./download.sh --download` | Download the `.deb` only, skip extraction. |
 | `./download.sh --extract` | Extract an already-downloaded `wps-office.deb`. |
 
+## Uninstall
+
+To completely remove the (custom or stock) WPS Office install and every trace it leaves behind, run the steps below. Copy-paste the whole block — it is safe to run even if some paths don't exist.
+
+```bash
+# 1. Find the exact installed package name (custom build or upstream)
+dpkg -l | grep -i wps
+
+# 2. Purge the package AND its system config (covers both possible names)
+sudo apt-get purge -y wps-office wps-office-custom 2>/dev/null \
+  || sudo dpkg --purge wps-office wps-office-custom
+
+# 3. Remove per-user config, state and cache (run as YOUR user, no sudo)
+rm -rf ~/.config/Kingsoft ~/.local/share/Kingsoft \
+       ~/.cache/Kingsoft  ~/.kingsoft \
+       ~/.local/share/applications/wps-office-*.desktop
+
+# 4. Remove any files this build placed under /opt or /etc
+sudo rm -rf /opt/kingsoft/wps-office
+sudo rm -f  /etc/hosts.wps-block
+
+# 5. Drop dependencies that were pulled in only for WPS
+sudo apt-get autoremove -y
+
+# 6. Refresh the desktop/MIME databases so launchers disappear
+sudo update-desktop-database 2>/dev/null || true
+```
+
+> **If you appended the Section D blocklist directly into `/etc/hosts`** (instead of using the standalone `/etc/hosts.wps-block` fragment), remove those lines too. **Review the match before deleting:**
+>
+> ```bash
+> sudo cp /etc/hosts /etc/hosts.bak                 # backup first
+> grep -nE 'wps\.(com|cn)|wpscdn\.cn|kdocs\.cn' /etc/hosts   # preview what will go
+> sudo sed -i -E '/wps\.(com|cn)|wpscdn\.cn|kdocs\.cn/d' /etc/hosts
+> ```
+
+One-liner (package + user data only, no hosts cleanup):
+
+```bash
+sudo apt-get purge -y wps-office wps-office-custom; rm -rf ~/.config/Kingsoft ~/.cache/Kingsoft ~/.local/share/Kingsoft; sudo apt-get autoremove -y
+```
+
 ## Build in CI
 
 The [`build.yml`](.github/workflows/build.yml) workflow runs the whole pipeline on `ubuntu-latest`:
