@@ -1,33 +1,100 @@
-name: Build Custom WPS Office
+name: Build WPS Office (Custom)
+
+# Downloads the upstream WPS Office .deb, extracts it, runs the English-only /
+# offline cleanup, repackages it and (optionally) publishes a GitHub Release.
+#
+# The heavy lifting lives in build.sh, which orchestrates:
+#   download.sh  -> fetch + extract the .deb into ./build
+#   (inline)     -> strip non-English locales + telemetry/update components
+#   repack.sh    -> rebuild ./output/wps-office-custom_amd64.deb
+# This workflow just provisions the tools, runs that pipeline in CI and ships
+# the artifact.
 
 on:
-  push:
-    branches: [main, master]
+  # Manual runs from the Actions tab.
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish a GitHub Release with the built .deb"
+        type: boolean
+        default: true
+  # Tag pushes (e.g. v1.0.0) always build AND release under that tag.
+  push:
+    tags:
+      - "v*"
+
+# Needed for gh release create / uploading assets with the built-in token.
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install build tools
-        run: sudo apt-get update && sudo apt-get install -y dpkg-dev wget
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            dpkg-dev binutils wget ca-certificates xz-utils
 
-      - name: Run build script
+      - name: Make scripts executable
+        run: chmod +x ./*.sh
+
+      # Runs the full pipeline: download -> extract -> cleanup -> repack.
+      - name: Build custom WPS Office .deb
         run: ./build.sh
 
-      - name: Upload artifact
+      - name: Locate built package
+        id: pkg
+        run: |
+          set -euo pipefail
+          DEB="$(ls -1 output/*.deb | head -n1)"
+          if [ -z "$DEB" ]; then
+            echo "::error::No .deb produced in ./output"
+            exit 1
+          fi
+          echo "path=$DEB" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$DEB")" >> "$GITHUB_OUTPUT"
+          echo "Built: $DEB"
+          ls -lh output/
+
+      # Always keep the build as a downloadable artifact, even when we don't
+      # cut a release.
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wps-office-custom
+          name: wps-office-custom-deb
           path: output/*.deb
+          if-no-files-found: error
 
-      - name: Create Release (on tag)
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: output/*.deb
+      - name: Determine release tag
+        id: tag
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=build-$(date -u +'%Y%m%d-%H%M%S')" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Release on any tag push, or on a manual run with release=true.
+      - name: Create GitHub Release
+        if: github.ref_type == 'tag' || inputs.release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "${{ steps.tag.outputs.tag }}" \
+            output/*.deb \
+            --repo "${{ github.repository }}" \
+            --title "WPS Office Custom (${{ steps.tag.outputs.tag }})" \
+            --notes "English-only, offline custom build of WPS Office. Telemetry, auto-update and cloud/online components removed per CLEANING_MAP.md."
