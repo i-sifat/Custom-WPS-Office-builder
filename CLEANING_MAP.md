@@ -1,5 +1,53 @@
 # CLEANING_MAP.md
 
+> ## v3 — Offline "New / New From Docer" page & clean.sh↔map parity
+>
+> This section reflects the current `clean.sh` + `.github/workflows/build.yml`. It sits on top of v2 (below); the detailed path-by-path map further down is unchanged and still authoritative for *what* gets removed.
+>
+> ### Symptom
+> On the **full** build (`KEEP_CEF=1`), clicking the home **New** button ("New From Docer") shows the category tabs (**Document / Excel / Presentation**) but a **blank card area** — the **"Create new"** (blank document) cards never appear, so you cannot start a new file from that page.
+>
+> ### Root cause
+> The "New" page is a web-rendered surface (`office6/addons/knewdocs`). Its category tabs are a local shell, but the **card grid — including the blank "Create new" cards — is fetched from the online Docer service**. On an offline-hardened build (no network / sinkholed endpoints) that grid never loads, so the area is blank. This is an **offline-rendering** issue, **not** a deleted-file issue: on the full build `clean.sh` does not remove `knewdocs` or CEF. (On the **lite** build the same page is blank for a different reason — CEF is gone — and is handled by the fusion neutralizer + classic UI.)
+>
+> The package already ships **local/offline** new-document assets that can render those cards without a network:
+> * `office6/addons/knewdocs/res/kuip/` — the local KUIP-rendered page shell.
+> * `office6/addons/knewdocs/res/blanktemplate/` — the bundled blank documents.
+>
+> ### Fix (BOTH variants, implemented in `clean.sh`)
+> 1. **Keep the local assets** — `knewdocs/res/kuip` and `knewdocs/res/blanktemplate` are asserted and **never deleted** (`preserveNewDocsOffline`). `knewdocs` is explicitly **not** in `ONLINE_ADDONS`.
+> 2. **Ship a default `Office.conf`** (`writeOfficeConf`) to `/etc/skel/.config/Kingsoft/` in **both** variants (previously the config was written in the **lite** variant only). It requests the offline/local new-document templates so the "Create new" cards render with no network. The **full** build keeps fusion/CEF (modern web home still works); the **lite** build additionally disables the fusion/start page.
+>
+> > **⚠ VERIFY-FIRST — `Office.conf` keys.** The keys that force the offline/local new-document page (`EnableOnlineNewDoc`, `EnableDocerNewDoc`, `NewDocDefaultOffline`) vary across WPS builds and are **best-effort**. `/etc/skel` only seeds **new** users; an existing user may need to copy the file into `~/.config/Kingsoft/Office.conf`. If the cards are still blank on the live 11733 build, confirm the correct key against a working config (or, as an alternative, leave the Docer endpoints resolvable so the online gallery — including its blank card — loads). The kept local `res/{kuip,blanktemplate}` assets are the durable part of the fix; the config is what points the page at them.
+>
+> ### `clean.sh` ↔ `CLEANING_MAP.md` parity (gaps reconciled in v3)
+>
+> | Item the map proposed | Was it in `clean.sh`? | Status now |
+> | --- | --- | --- |
+> | Remove `etc/xdg/autostart/*`, `etc/cron.d/*`, `etc/logrotate.d/*` (Section B) | ❌ not handled | ✅ now removed (both variants). Dirs confirmed present in `manifests/build-dirs.txt`. `etc/xdg/menus` is kept. |
+> | Remove non-English `.properties` bundles (A.2) | ⚠ loop matched `zh_CN`-style only; the files use hyphen/bare codes (`strings_zh-CN.properties`, `strings_ja.properties`) so **none** matched | ✅ dedicated `strings_*.properties` sweep added, keeping `en-US` + base |
+> | `knewdocs`: trim online, **keep local** (`res/blanktemplate`) | ⚠ untouched (implicitly kept) | ✅ explicitly preserved (`res/kuip` + `res/blanktemplate`) and used for the offline new-doc fix |
+> | Default `Office.conf` | ⚠ lite variant only | ✅ written in **both** variants (offline new-doc; lite also disables fusion) |
+> | `messagepush`, `secanalyze` (Section B expanded) | ✅ already in `TELEMETRY_ADDONS` | ✅ unchanged |
+> | `kwebextensionlist`, `linkeddatatype` (Section C) | ✅ already in `ONLINE_ADDONS` | ✅ unchanged |
+>
+> ### Things `clean.sh` does that the older map under-specified
+> * Removes legacy `office6/updateself` and `office6/wpscloudsvr` binaries (map listed only the `wpscloudsvr.com` domain).
+> * `konlinefileconfig` is asserted-kept (launch-critical) — matches the map callout.
+>
+> ### Intentional **VERIFY-FIRST deferrals** (map proposes, `clean.sh` deliberately does NOT auto-do)
+> These stay manual because they are behaviour-changing or need a live check; they are documented, not silently dropped:
+> * `DEBIAN/postinst`/`prerm`/`preinst`/`postrm` — edit, don't delete (kept + logged).
+> * `kappcenter`/`kapplist`/`kappmgr`/`kappentryobject`, `kstartpage`, `kskincenter`, `kqrcode`, `knewdocs` online-gallery assets — trim, don't nuke (kept).
+> * `cfgs/domain_qing.cfg`, `feature.dat`, `oem.ini` — prefer config over deletion (untouched).
+> * `data/chinesesegment` — gated behind `REMOVE_CJK_DATA` (on by default).
+> * `knetwork`, `libpaho-mqtt3as`, `libkdownload`, `libKMailLib` — keep the lib, block the network (Section D) rather than delete.
+>
+> ### A note on `manifests/`
+> The files under `manifests/` (`build-dirs.txt`, `build-manifest.txt`, `build-sizes.txt`) are **reference listings of the upstream package** (`find`/size output from an already-unpacked `.deb`), from version **11.1.0.11698.XA**. They are **not** a description of the cleaned output and nothing in the pipeline reads them at runtime, so they are **not** edited to match `clean.sh`. If you want them to line up with the active download (**11.1.0.11733.XA**, per `download.sh`), regenerate them from that package — the directory layout is stable across these point releases, so the map/cleaning logic still applies.
+>
+> ---
+
 > ## v2 — Build variants, CEF vs. telemetry, and bundled fonts
 >
 > This section reflects the current `clean.sh` + `.github/workflows/build.yml`. The detailed path-by-path map below it is unchanged and still authoritative for *what* gets removed.
@@ -82,7 +130,7 @@ Pattern: `office6/addons/<addon>/mui/{zh_CN,zh_TW,ja_JP}/<addon>.qm`. Confirmed 
 | strings\_en-US.properties | en | 248B | KEEP |
 | [strings.properties](http://strings.properties) (default) | base | 284B | KEEP |
 
-Apply the same `strings_{zh*,ja*}.properties` deletion pattern to any other web-addon `i18n/` folder in the full tree (**Verify first** per folder — some use the base `strings.properties` as English).
+Apply the same `strings_{zh*,ja*}.properties` deletion pattern to any other web-addon `i18n/` folder in the full tree (**Verify first** per folder — some use the base `strings.properties` as English). *(v3: `clean.sh` now sweeps these via a dedicated `strings_*.properties` matcher, since they use hyphen/bare locale codes.)*
 ### A.3 CEF UI locale packs (`.pak`)
 `office6/addons/cef/locales/`:
 
@@ -117,12 +165,15 @@ Only relevant if CEF is retained (see Section C.1). If CEF is removed entirely, 
 **Notes**
 *   **"Replace with dummy" vs "remove":** For `.so` files that other libraries may `dlopen`/link at startup, replacing with an empty/stub library (same filename) is safer than deleting — it avoids missing-symbol crashes while killing the behaviour. `kfeedback` and `cloudpushsdk` are prime dummy-replacement candidates.
 *   **Auto-update:** No standalone updater binary is clearly visible in the shared slice. WPS Linux typically performs update/telemetry via `postinst` + autostart + the network layer rather than a dedicated daemon. **Verify first** by grepping the full manifest for `update`, `upgrade`, `daemon`, `push`, `report`, `stat`, `crash`.
+*   *(v3: `clean.sh` now removes the contents of `etc/xdg/autostart/`, `etc/cron.d/`, and `etc/logrotate.d/` in both variants; `etc/xdg/menus` is kept for app-menu integration.)*
 
 * * *
 ## Section C — Online Features
 These enable accounts, cloud, online templates/fonts, and web-powered panels. None are required for local document editing, but several share the CEF/network stack, so removal order matters.
 
 > **⚠ Launch-critical exception — `konlinefileconfig` (do NOT delete).** `office6/libkprometheus.so` (the "Prometheus"/fusion UI runtime, which is still shipped and loaded at startup) `dlopen`s `libkonlinefileconfig.so`, which lives inside the `konlinefileconfig` addon. Removing the addon triggers `libkonlinefileconfig.so: cannot open shared object file` and **every WPS app fails to launch** — and because the `wps`/`et`/`wpp` wrapper redirects stderr to `/dev/null` and exits `0`, it looks like a silent no-op (run the binary directly to see the real error). **Keep `konlinefileconfig`** unless you also remove/dummy `libkprometheus.so` *and* disable fusion mode in `~/.config/Kingsoft/Office.conf`. Its online endpoints are already severed by the Section D blocklist, so keeping this local config lib is safe. (In the **lite** variant, `clean.sh` does exactly that — dummies `libkprometheus.so` — so `konlinefileconfig` becomes harmless either way.)
+
+> **⚠ Keep-local exception — `knewdocs` (do NOT delete).** `knewdocs` hosts the local/offline new-document page. Its `res/kuip/` (local page shell) and `res/blanktemplate/` (bundled blank docs) render the offline "Create new" cards; deleting the addon (or those dirs) removes the ability to start a new file from the "New From Docer" page offline. Keep it — only its *online-gallery* web assets are trim candidates. See **v3** above.
 
 | Full path (under build/) | Feature | Action | Affects offline editing? |
 | ---| ---| ---| --- |
@@ -179,8 +230,11 @@ Redirect known WPS/Kingsoft endpoints to loopback to sever updates, telemetry, a
 0.0.0.0 clouddocs.wps.cn
 
 # Templates (Docer) / online fonts / plugins
-0.0.0.0 docer.wps.cn
-0.0.0.0 docer.wpscdn.cn
+#  NOTE: leaving docer.* resolvable lets the online template gallery load if the
+#  user goes online; the offline new-document page uses local blank templates
+#  regardless. Uncomment to seal Docer completely.
+# 0.0.0.0 docer.wps.cn
+# 0.0.0.0 docer.wpscdn.cn
 0.0.0.0 font.wps.cn
 0.0.0.0 fonts.wpscdn.cn
 0.0.0.0 plugin.wps.cn
@@ -212,6 +266,7 @@ Redirect known WPS/Kingsoft endpoints to loopback to sever updates, telemetry, a
 ```
 
 > **Verify first (all of Section D).** These hosts are compiled from WPS/Kingsoft's known naming scheme and community block lists; the exact subdomains contacted by _this_ build should be confirmed by watching live DNS/traffic (e.g. `sudo tcpdump -n port 53`, or check strings in `libknetwork.so` / config files). Blocking the parent domains `wps.cn` / `wps.com` / `wpscdn.cn` at the DNS/firewall layer is the most robust option. Do not add `0.0.0.0 localhost`\-type entries and keep this block clearly delimited so it's easy to revert.
+> *(v3: the `clean.sh` `/etc/hosts.wps-block` fragment deliberately leaves `docer.wps.cn` / `docer.wpscdn.cn` unblocked so the online template gallery still works if a user goes online; the offline "Create new" page uses the bundled local templates either way.)*
 * * *
 ## Summary of expected space savings (from visible sizes)
 *   Feedback DBs (`kfeedback/db/personal_cn/`): **~12.8 MB**
@@ -276,7 +331,7 @@ Newly confirmed components:
 | office6/libKMailLib.so.71 + cfgs/smtp.xml | Mail/SMTP (feedback/share-by-email) | Verify first / remove smtp.xml contents | Email-share feature dead; no core impact |
 | DEBIAN/postinst (42K), prerm (25K), preinst (3.4K), postrm (2.1K) | Maintainer scripts | Verify first → edit, don't delete | Keep mime/desktop registration & symlinks; strip any update/telemetry/cron/daemon setup. Audit all four for network calls (the oversized postinst/prerm are the priority) |
 
-**Still not present in the manifest:** no standalone auto-updater binary or `etc/cron.d` / `etc/xdg/autostart` entries appear in the readable portion. Section B of page 1 listed those as _candidates_; treat them as **Verify first / may not exist** — confirm with `ls build/etc/cron.d build/etc/xdg/autostart` and by grepping `postinst` for `crontab`, `systemctl`, `update`.
+**Still not present in the manifest:** no standalone auto-updater binary appears in the readable portion, but `etc/cron.d`, `etc/xdg/autostart` and `etc/logrotate.d` **do** exist (see `build-dirs.txt`) — v3 `clean.sh` clears their contents. Confirm what they contained with `ls build/etc/cron.d build/etc/xdg/autostart` and by grepping `postinst` for `crontab`, `systemctl`, `update`.
 
 * * *
 ## Section C (expanded) — Online Features
