@@ -1,0 +1,59 @@
+Check how WPS Office was installed
+
+Run:
+
+which wps
+
+Check APT:
+
+dpkg -l | grep wps
+
+Check Snap:
+
+snap list | grep wps
+
+Check Flatpak:
+
+flatpak list | grep -i wps
+
+If you're not sure how it was installed, run:
+
+which wps
+dpkg -l | grep wps
+snap list | grep wps
+flatpak list | grep -i wps
+
+and share the output. I can tell you the exact uninstall command for your installation.
+
+sifat@Raptor:~$ which wps
+/usr/bin/wps
+sifat@Raptor:~$ dpkg -l | grep wps
+ii  wps-office-custom                                   11.1.0.11733.XA+custom                           amd64        WPS Office, is an office productivity suite.
+sifat@Raptor:~$
+
+Your output shows that WPS Office was installed as a .deb package via APT, and the package name is wps-office-custom, not wps-office.
+
+Run these commands:
+
+sudo apt purge wps-office-custom
+
+Then remove any unused dependencies:
+
+sudo apt autoremove --purge
+
+Finally, delete the remaining user configuration and cache:
+\
+
+rm -rf ~/.config/Kingsoft
+rm -rf ~/.local/share/Kingsoft
+rm -rf ~/.cache/Kingsoft
+rm -rf ~/.fonts/wps-office
+
+To verify it's completely removed:
+
+which wps
+dpkg -l | grep wps
+
+Both commands should produce no output (or which wps should report that wps is not found).
+
+If sudo apt purge wps-office-custom fails, paste the exact error message and I'll help you resolve it.
