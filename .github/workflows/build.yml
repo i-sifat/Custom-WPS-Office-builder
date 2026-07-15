@@ -1,30 +1,34 @@
 name: Build WPS Office (Custom)
 
-# End-to-end pipeline, driven by CI:
-#   download.sh  -> download upstream .deb + extract into ./build
-#   clean.sh     -> strip non-English locales + telemetry/online per CLEANING_MAP.md
-#   Repack step  -> rebuild ./output/<pkg>_<ver>_amd64.deb
-#   Release step -> publish the built .deb
+# End-to-end pipeline, driven by CI. Produces TWO .deb files from one upstream
+# download:
+#   * wps-office-custom       -> full build  (KEEP_CEF=1): keeps the embedded
+#                                browser (CEF), modern web home page, no
+#                                "core support library" popup.
+#   * wps-office-custom-lite  -> lite build  (KEEP_CEF=0): CEF removed, lean,
+#                                classic UI, web home/templates/account panels
+#                                gone; fusion loader neutralized so no popup.
 #
-# The two shell scripts own the logic:
+# Both builds have telemetry/online addons removed and the Section D network
+# blocklist applied (privacy is independent of CEF), and both bundle the repo's
+# fonts/ directory.
+#
+# Logic lives in the shell scripts:
 #   * download.sh owns the upstream URL (download + extract).
-#   * clean.sh    is the executable 1:1 implementation of CLEANING_MAP.md.
-# CLEANING_MAP.md is documentation only. This workflow just wires them together.
+#   * clean.sh    is the executable 1:1 implementation of CLEANING_MAP.md and
+#                 takes KEEP_CEF / BUNDLE_FONTS / REMOVE_CJK_DATA via env.
 
 on:
-  # Manual runs from the Actions tab.
   workflow_dispatch:
     inputs:
       release:
-        description: "Publish a GitHub Release with the built .deb"
+        description: "Publish a GitHub Release with the built .deb files"
         type: boolean
         default: true
-  # Tag pushes (e.g. v1.0.0) always build AND release under that tag.
   push:
     tags:
       - "v*"
 
-# Needed for gh release create / uploading assets with the built-in token.
 permissions:
   contents: write
 
@@ -35,7 +39,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -45,64 +49,72 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            dpkg-dev binutils wget ca-certificates xz-utils
+            dpkg-dev binutils wget ca-certificates xz-utils gcc
 
       - name: Make scripts executable
         run: chmod +x ./download.sh ./clean.sh
 
-      # 1) Download the upstream .deb and extract it into ./build (URL lives in download.sh).
-      - name: Download & extract WPS Office
-        run: ./download.sh
+      # Download the upstream .deb once (URL lives in download.sh). Each variant
+      # re-extracts a fresh tree from this cached download.
+      - name: Download upstream WPS Office (.deb)
+        run: ./download.sh --download
 
-      # 2) Clean: English-only, fully offline. Implements CLEANING_MAP.md.
-      - name: Clean (English-only, offline)
-        env:
-          REMOVE_CJK_DATA: "1"
-        run: ./clean.sh
-
-      # 3) Repack the cleaned tree into ./output/<pkg>_<ver>_amd64.deb.
-      - name: Repack .deb
-        id: pkg
+      - name: Build both variants (full = keep CEF / modern UI, lite = no CEF / classic UI)
         run: |
           set -euo pipefail
-          BUILD_DIR="build"
-          OUTPUT_DIR="output"
+          rm -rf output && mkdir -p output
 
-          [[ -f "$BUILD_DIR/DEBIAN/control" ]] || { echo "::error::missing control file"; exit 1; }
+          build_variant() {
+            variant="$1"; keep_cef="$2"; pkg_suffix="$3"; conflicts="$4"
 
-          orig_version=$(grep "^Version:" "$BUILD_DIR/DEBIAN/control" | sed 's/^Version: //')
-          orig_package=$(grep "^Package:" "$BUILD_DIR/DEBIAN/control" | sed 's/^Package: //')
-          orig_arch=$(grep "^Architecture:" "$BUILD_DIR/DEBIAN/control" | sed 's/^Architecture: //' || true)
+            echo "::group::[$variant] Extract fresh tree"
+            ./download.sh --extract
+            echo "::endgroup::"
 
-          [[ -n "$orig_version" ]] || { echo "::error::could not read Version"; exit 1; }
-          [[ -n "$orig_package" ]] || { echo "::error::could not read Package"; exit 1; }
+            echo "::group::[$variant] Clean (KEEP_CEF=$keep_cef)"
+            REMOVE_CJK_DATA=1 KEEP_CEF="$keep_cef" BUNDLE_FONTS=1 ./clean.sh
+            echo "::endgroup::"
 
-          # Idempotent custom suffixes.
-          base_package="${orig_package%-custom}"
-          base_version="${orig_version%+custom}"
-          new_package="${base_package}-custom"
-          new_version="${base_version}+custom"
+            BUILD_DIR=build
+            [ -f "$BUILD_DIR/DEBIAN/control" ] || { echo "::error::missing control file"; exit 1; }
 
-          sed -i "s/^Package: .*/Package: ${new_package}/" "$BUILD_DIR/DEBIAN/control"
-          sed -i "s/^Version: .*/Version: ${new_version}/" "$BUILD_DIR/DEBIAN/control"
+            orig_version=$(grep '^Version:' "$BUILD_DIR/DEBIAN/control" | sed 's/^Version: //')
+            orig_arch=$(grep '^Architecture:' "$BUILD_DIR/DEBIAN/control" | sed 's/^Architecture: //' || true)
+            [ -n "$orig_version" ] || { echo "::error::could not read Version"; exit 1; }
 
-          rm -rf "$OUTPUT_DIR"
-          mkdir -p "$OUTPUT_DIR"
-          output_deb="$OUTPUT_DIR/${new_package}_${new_version}_${orig_arch:-amd64}.deb"
+            base_version="${orig_version%%+*}"
+            new_package="wps-office-${pkg_suffix}"
+            new_version="${base_version}+${pkg_suffix}"
 
-          dpkg-deb --build "$BUILD_DIR" "$output_deb"
-          dpkg-deb -I "$output_deb" >/dev/null || { echo "::error::built package failed integrity check"; exit 1; }
+            sed -i "s/^Package: .*/Package: ${new_package}/" "$BUILD_DIR/DEBIAN/control"
+            sed -i "s/^Version: .*/Version: ${new_version}/" "$BUILD_DIR/DEBIAN/control"
 
-          echo "path=$output_deb" >> "$GITHUB_OUTPUT"
-          echo "name=$(basename "$output_deb")" >> "$GITHUB_OUTPUT"
-          echo "Built: $output_deb"
-          ls -lh "$OUTPUT_DIR/"
+            # Make the two custom builds mutually exclusive and cleanly replace upstream.
+            sed -i '/^Conflicts:/d;/^Replaces:/d;/^Provides:/d' "$BUILD_DIR/DEBIAN/control"
+            {
+              echo "Conflicts: wps-office, ${conflicts}"
+              echo "Replaces: wps-office, ${conflicts}"
+              echo "Provides: wps-office"
+            } >> "$BUILD_DIR/DEBIAN/control"
 
-      # Always keep the build as a downloadable artifact, even when we don't cut a release.
-      - name: Upload build artifact
+            out="output/${new_package}_${new_version}_${orig_arch:-amd64}.deb"
+            dpkg-deb --build "$BUILD_DIR" "$out"
+            dpkg-deb -I "$out" >/dev/null || { echo "::error::built package failed integrity check: $out"; exit 1; }
+            echo "Built: $out"
+          }
+
+          # full: keeps CEF (modern web home, no popup)
+          build_variant full "1" "custom"      "wps-office-custom-lite"
+          # lite: no CEF (lean, classic UI)
+          build_variant lite "0" "custom-lite" "wps-office-custom"
+
+          echo "Artifacts:"
+          ls -lh output/
+
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: wps-office-custom-deb
+          name: wps-office-custom-debs
           path: output/*.deb
           if-no-files-found: error
 
@@ -116,7 +128,6 @@ jobs:
             echo "tag=build-$(date -u +'%Y%m%d-%H%M%S')" >> "$GITHUB_OUTPUT"
           fi
 
-      # Release on any tag push, or on a manual run with release=true.
       - name: Create GitHub Release
         if: github.ref_type == 'tag' || inputs.release
         env:
@@ -127,4 +138,9 @@ jobs:
             output/*.deb \
             --repo "${{ github.repository }}" \
             --title "WPS Office Custom (${{ steps.tag.outputs.tag }})" \
-            --notes "English-only, offline custom build of WPS Office. Telemetry, auto-update and cloud/online components removed per CLEANING_MAP.md."
+            --notes "English-only, telemetry-free, offline-hardened WPS Office. Two builds (install ONE):
+
+          - **wps-office-custom** - keeps the embedded browser (CEF): modern web home page, no popups. Larger (~+190 MB).
+          - **wps-office-custom-lite** - no CEF: lean, classic UI; web home/templates/account panels removed, fusion loader neutralized.
+
+          Both: telemetry/cloud add-ons removed, /etc/hosts.wps-block network blocklist shipped, and bundled fonts installed. See CLEANING_MAP.md."
