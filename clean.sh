@@ -21,6 +21,17 @@ set -euo pipefail
 #       an empty .so, drops the Prometheus launcher, and ships a default
 #       Office.conf that disables the fusion/start page.
 #
+# OFFLINE "NEW / NEW FROM DOCER" PAGE (BOTH variants):
+#   The home "New" button opens the "New From Docer" page. Its category tabs
+#   (Document / Excel / Presentation) are a local shell, but the "Create new"
+#   card grid is normally fetched from the online Docer service - so with no
+#   network (an offline-hardened build) that area renders BLANK and you cannot
+#   start a new file from there. The package already ships offline templates
+#   under office6/addons/knewdocs/res/{kuip,blanktemplate}; this script keeps
+#   them and writes a default Office.conf (BOTH variants) that requests the
+#   local/offline new-document templates so a blank file can still be created
+#   from that page. (See writeOfficeConf / preserveNewDocsOffline below.)
+#
 # IMPORTANT - privacy is independent of CEF:
 #   Telemetry/online addon removal (Sections B/C) and the /etc/hosts blocklist
 #   (Section D) run in BOTH variants. CEF is only a renderer; with the Section D
@@ -40,6 +51,8 @@ set -euo pipefail
 #     NEVER deleted - the suite fails to launch without them.
 #   * konlinefileconfig is NEVER deleted - libkprometheus.so dlopen()s
 #     libkonlinefileconfig.so at startup (see Section C).
+#   * knewdocs local templates (res/kuip, res/blanktemplate) are NEVER deleted -
+#     they are the offline "Create new" cards (see Section C.2).
 #   * Missing targets are logged and skipped, so re-runs are idempotent.
 #
 # Usage:
@@ -95,31 +108,69 @@ remove_path() {
     fi
 }
 
-# Write a default Office.conf that disables the fusion / web start page.
-# VERIFY-FIRST: the exact keys vary across WPS builds; this is the commonly
-# working set. Shipped to /etc/skel so new users pick it up; existing users may
-# need to copy it into ~/.config/Kingsoft/Office.conf (see README).
-writeDefaultOfficeConf() {
+# Keep the bundled OFFLINE new-document templates so the "New From Docer" page can
+# render its "Create new" (blank) cards without a network connection. Runs in BOTH
+# variants. These assets are never deleted; this just asserts/logs their presence.
+preserveNewDocsOffline() {
+    log "  -> Preserving local (offline) New-document assets (knewdocs)"
+    local keep
+    for keep in "$ADDONS/knewdocs/res/blanktemplate" "$ADDONS/knewdocs/res/kuip"; do
+        if [[ -e "$keep" ]]; then
+            log "  keep (offline new-doc, do NOT delete): $keep"
+        else
+            log "  ! expected offline new-doc asset missing: $keep (VERIFY on this build)"
+        fi
+    done
+}
+
+# Write a default Office.conf shipped to /etc/skel. In BOTH variants it requests
+# the built-in OFFLINE/local new-document templates so the "New From Docer" page's
+# "Create new" cards render with no network. In the lite variant it ALSO disables
+# the fusion / web start page (CEF has been removed).
+# VERIFY-FIRST: the exact keys vary across WPS builds; this is a best-effort set.
+# New users pick it up from /etc/skel; existing users may need to copy it into
+# ~/.config/Kingsoft/Office.conf (see README).
+writeOfficeConf() {
     local dst="$BUILD_DIR/etc/skel/.config/Kingsoft/Office.conf"
     if [[ "$DRY_RUN" == "1" ]]; then
-        log "  [dry-run] would write default Office.conf to $dst"
+        log "  [dry-run] would write default Office.conf to $dst (KEEP_CEF=$KEEP_CEF)"
         return 0
     fi
     mkdir -p "$(dirname "$dst")"
-    cat > "$dst" << 'EOF'
-[6.0]
-EnableFusionMode=false
-EnableStartPage=false
-
-[Fusion]
-Enable=false
-EOF
-    log "  -> wrote default Office.conf (fusion/start page disabled) to $dst"
+    {
+        echo "[6.0]"
+        echo "; --- New-document page: prefer built-in OFFLINE/local templates ---"
+        echo "; The 'New From Docer' page normally pulls its Document/Excel/Presentation"
+        echo "; 'Create new' cards from the online Docer service; on an offline build that"
+        echo "; area renders blank. These keys request the bundled offline templates that"
+        echo "; ship in office6/addons/knewdocs/res/{kuip,blanktemplate} so a new blank file"
+        echo "; can still be created from that page."
+        echo "; VERIFY-FIRST: exact keys vary per WPS build - confirm against a working config."
+        echo "EnableOnlineNewDoc=false"
+        echo "EnableDocerNewDoc=false"
+        echo "NewDocDefaultOffline=true"
+        if [[ "$KEEP_CEF" != "1" ]]; then
+            echo ""
+            echo "; lite build: also disable the fusion / web start page (CEF removed)."
+            echo "EnableFusionMode=false"
+            echo "EnableStartPage=false"
+        fi
+    } > "$dst"
+    if [[ "$KEEP_CEF" != "1" ]]; then
+        {
+            echo ""
+            echo "[Fusion]"
+            echo "Enable=false"
+        } >> "$dst"
+    fi
+    log "  -> wrote default Office.conf to $dst (KEEP_CEF=$KEEP_CEF)"
     log "  ! VERIFY-FIRST: Office.conf keys vary per WPS build - confirm against a working config"
+    log "  ! /etc/skel seeds NEW users only; existing users may need to copy it into ~/.config/Kingsoft/Office.conf"
 }
 
 # Lite-build only: neutralize the orphaned fusion loader so it can't throw the
-# "core support library" popup once CEF has been removed.
+# "core support library" popup once CEF has been removed. (The default Office.conf
+# that also disables the fusion/start page is written by writeOfficeConf, below.)
 neutralizeFusion() {
     log "  -> Neutralizing fusion/web home page (prevents 'core support library' popup)"
 
@@ -147,9 +198,6 @@ neutralizeFusion() {
     while IFS= read -r -d '' d; do
         remove_path "$d"
     done < <(find "$BUILD_DIR" -name 'wps-office-prometheus.desktop' -print0 2>/dev/null)
-
-    # 3) Ship a default Office.conf disabling the fusion/start page.
-    writeDefaultOfficeConf
 }
 
 # Install the repo's bundled fonts into the package tree (both variants).
@@ -217,12 +265,27 @@ find "$WPS_DIR" -type d -name mui -print0 | while IFS= read -r -d '' muiparent; 
     done
 done
 
-# A.2 Non-English Qt translations (.qm) and web string bundles (.properties).
+# A.2 Non-English Qt translations (.qm) - these use underscore locale codes.
 for loc in zh_CN zh_TW ja_JP ko_KR de_DE es_ES fr_FR pt_BR pt_PT ru_RU mn_CN ug_CN; do
     while IFS= read -r -d '' f; do
         remove_path "$f"
-    done < <(find "$OFFICE6" -type f \( -name "*${loc}*.qm" -o -name "*${loc}*.properties" \) -print0 2>/dev/null)
+    done < <(find "$OFFICE6" -type f -name "*${loc}*.qm" -print0 2>/dev/null)
 done
+
+# A.2b Non-English web string bundles (.properties). Unlike .qm files these use
+# HYPHEN/bare language codes (e.g. strings_zh-CN.properties, strings_ja.properties,
+# strings_zh-TW.properties), which the underscore loop above does NOT match - so
+# sweep them explicitly here. Keep English (strings_en-US.properties) and the base
+# strings.properties.
+while IFS= read -r -d '' f; do
+    base="$(basename "$f")"
+    case "$base" in
+        strings_en-US.properties|strings_en.properties|strings.properties)
+            log "  keep (i18n): $f" ;;
+        strings_zh*|strings_ja*|strings_ko*|strings_de*|strings_es*|strings_fr*|strings_pt*|strings_ru*)
+            remove_path "$f" ;;
+    esac
+done < <(find "$OFFICE6" -type f -name "strings_*.properties" -print0 2>/dev/null)
 
 # A.3 CEF UI locale packs - keep only en-US.pak (only relevant if cef survives).
 if [[ -d "$ADDONS/cef/locales" ]]; then
@@ -257,6 +320,23 @@ done
 remove_path "$OFFICE6/updateself"
 remove_path "$OFFICE6/wpscloudsvr"
 
+# Background autostart entries, scheduled jobs and log rotation. These dirs exist
+# in the package (see manifests/build-dirs.txt) and are prime update/telemetry
+# vectors, so drop their contents (CLEANING_MAP Section B). NOTE: desktop *menu*
+# entries under etc/xdg/menus are KEPT - only autostart is removed.
+if [[ -d "$BUILD_DIR/etc/xdg/autostart" ]]; then
+    while IFS= read -r -d '' f; do
+        remove_path "$f"
+    done < <(find "$BUILD_DIR/etc/xdg/autostart" -mindepth 1 -maxdepth 1 -print0 2>/dev/null)
+fi
+for d in "$BUILD_DIR/etc/cron.d" "$BUILD_DIR/etc/logrotate.d"; do
+    if [[ -d "$d" ]]; then
+        while IFS= read -r -d '' f; do
+            remove_path "$f"
+        done < <(find "$d" -mindepth 1 -maxdepth 1 -print0 2>/dev/null)
+    fi
+done
+
 if [[ -f "$BUILD_DIR/DEBIAN/postinst" ]]; then
     log "  ! VERIFY-FIRST: kept $BUILD_DIR/DEBIAN/postinst (edit to strip update/telemetry, keep mime/desktop registration)"
 fi
@@ -268,6 +348,8 @@ log ""
 log "[C] Removing online-only add-ons..."
 # konlinefileconfig is intentionally NOT in this list (launch-critical: the real
 # libkprometheus.so dlopen()s libkonlinefileconfig.so at startup).
+# knewdocs is intentionally NOT in this list either - it hosts the local/offline
+# new-document templates (see Section C.2).
 ONLINE_ADDONS=(
     qing officespace wpsbox kweibo shareplay
     kclouddocs kusercenter knewshare kqingdlg
@@ -302,6 +384,17 @@ done
 log ""
 
 # =============================================================================
+# SECTION C.2 - Offline "New / New From Docer" page (BOTH variants)
+# =============================================================================
+# Keep the local blank-template assets and ship a default Office.conf that asks
+# WPS to use the offline/local new-document templates, so a new file can be
+# created from the "New From Docer" page even with no network.
+log "[C.2] Configuring offline New-document page (local blank templates)..."
+preserveNewDocsOffline
+writeOfficeConf
+log ""
+
+# =============================================================================
 # SECTION D - Network Blocklist (advisory /etc/hosts fragment) - BOTH variants
 # =============================================================================
 log "[D] Writing /etc/hosts-style blocklist fragment..."
@@ -312,6 +405,10 @@ else
     cat > "$BUILD_DIR/etc/hosts.wps-block" << 'EOF'
 # WPS / Kingsoft blocklist - append to /etc/hosts to hard-block online services.
 # Best source of truth for exact endpoints: office6/cfgs/domain_qing.cfg
+# NOTE: the Docer template endpoints (docer.wps.cn / docer.wpscdn.cn) are
+# deliberately NOT blocked here - the offline new-document page falls back to the
+# bundled local templates, and leaving Docer resolvable lets the online template
+# gallery work if a user chooses to go online. Add them if you want it fully sealed.
 127.0.0.1  wps.com
 127.0.0.1  www.wps.com
 127.0.0.1  account.wps.com
