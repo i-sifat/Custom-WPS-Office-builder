@@ -1,8 +1,42 @@
+# CLEANING_MAP.md
+
+> ## v2 — Build variants, CEF vs. telemetry, and bundled fonts
+>
+> This section reflects the current `clean.sh` + `.github/workflows/build.yml`. The detailed path-by-path map below it is unchanged and still authoritative for *what* gets removed.
+>
+> ### Privacy is independent of the browser engine (CEF)
+> Blocking telemetry / China endpoints does **not** require deleting the embedded browser (CEF). They are separate concerns:
+> * **What leaks:** telemetry/analytics/push add-ons (`kfeedback`, `cloudpushsdk`, `messagepush`, `secanalyze`), cloud/account add-ons, and auto-update — all removed in **both** variants (Sections B & C) — plus network calls, which the **Section D** `/etc/hosts.wps-block` fragment sinkholes in **both** variants.
+> * **What CEF is:** just a renderer for in-app web pages. With the Section D endpoints blocked it has nothing to phone home to. Keeping CEF does **not** reopen a telemetry/China leak.
+>
+> ### Two build variants (`KEEP_CEF`)
+> `build.yml` produces two `.deb`s from a single upstream download. Install **one**:
+>
+> | Package | `KEEP_CEF` | Browser engine | Home page / UI | "core support library" popup | Size |
+> | --- | --- | --- | --- | --- | --- |
+> | `wps-office-custom` | `1` (full) | **kept** | modern web home page works | **gone** (core lib loads from disk) | larger (~+190 MB) |
+> | `wps-office-custom-lite` | `0` (lite) | **removed** | classic UI; web home/templates/account panels gone | **gone** (fusion loader neutralized) | lean |
+>
+> Native editing (Writer / Spreadsheet / Presentation / PDF) and the native Qt ribbon look identical in both — only the *web-rendered* surfaces differ. What the lite build loses: the web home/start page, the online template gallery, account/login panels, and the `kprome*` web-app tools.
+>
+> ### How the lite build kills the popup
+> After CEF is removed, the orphaned fusion loader would otherwise try (and fail) to load/download the "core support library". `clean.sh` (`neutralizeFusion`) therefore:
+> 1. replaces `office6/libkprometheus.so` with an **empty stub `.so`** (it is `dlopen`'d, not `NEEDED`-linked, so the stub loads nothing and the app falls back to the classic UI — requires `gcc` at build time);
+> 2. removes `wps-office-prometheus.desktop`;
+> 3. ships a default `Office.conf` (fusion / start page disabled) to `/etc/skel/.config/Kingsoft/`.
+>
+> > **⚠ VERIFY-FIRST — `Office.conf` keys.** The exact keys that disable the fusion/start page vary across WPS builds; the shipped set is best-effort. The stub + removed launcher are the primary popup fix; the config is belt-and-suspenders. `/etc/skel` only seeds **new** users — existing users may need to copy the file into `~/.config/Kingsoft/Office.conf`. If a stray popup survives on a given build, confirm the correct key from a working config.
+>
+> ### Bundled fonts (both variants)
+> `clean.sh` (`installBundledFonts`, `BUNDLE_FONTS=1` default) copies the repo's `fonts/` directory into `/usr/share/fonts/truetype/wps-office-custom/` in **both** builds. fontconfig's dpkg trigger runs `fc-cache` automatically on install, so **no separate font-only package is needed**. (Note: several bundled fonts — Arial, Calibri, Segoe UI, Times New Roman, Malgun, etc. — are proprietary; review redistribution terms before publishing public releases.)
+>
+> ---
+
 **Package:** WPS Office for Linux (`.deb`), extracted under `build/`
 **Install root:** `/opt/kingsoft/wps-office/` (Debian/Ubuntu layout assumed)
 **Goal:** English-only, fully offline install — telemetry, auto-update, and online-only services removed or disabled — while preserving local document editing (WPS Writer / Spreadsheets / Presentation / PDF).
 **Source repo:** `i-sifat/Custom-WPS-Office-builder`
-> **Scope / confidence note.** This map is built from `build-manifest.txt`, `build-dirs.txt`, and `build-sizes.txt`. The manifest (~287 KB) is large and only partially visible in the shared attachments, so the file-by-file lists below are **exhaustive for every path I could confirm** and **pattern-complete** for the rest (e.g. "every `mui/zh_CN/*.qm` under `office6/addons/`"). Items I could not individually confirm are marked **Verify first**. The repo already contains `clean.sh` and `cleaner.sh`; this map should be cross-checked against them (happy to review those next).  
+> **Scope / confidence note.** This map is built from `build-manifest.txt`, `build-dirs.txt`, and `build-sizes.txt`. The manifest (~287 KB) is large and only partially visible in the shared attachments, so the file-by-file lists below are **exhaustive for every path I could confirm** and **pattern-complete** for the rest (e.g. "every `mui/zh_CN/*.qm` under `office6/addons/`"). Items I could not individually confirm are marked **Verify first**. The repo already contains `clean.sh` and `cleaner.sh`; this map should be cross-checked against them (happy to review those next).
 > **Golden rule applied throughout:** never delete `mui/default/` or `mui/en_US/` — those carry the English/base UI. WPS falls back to embedded English when a non-English `.qm` is missing, so removing `zh_CN` / `zh_TW` / `ja_JP` translations is non-destructive to English users.
 * * *
 ## Section A — Language Resources
@@ -88,7 +122,7 @@ Only relevant if CEF is retained (see Section C.1). If CEF is removed entirely, 
 ## Section C — Online Features
 These enable accounts, cloud, online templates/fonts, and web-powered panels. None are required for local document editing, but several share the CEF/network stack, so removal order matters.
 
-> **⚠ Launch-critical exception — `konlinefileconfig` (do NOT delete).** `office6/libkprometheus.so` (the "Prometheus"/fusion UI runtime, which is still shipped and loaded at startup) `dlopen`s `libkonlinefileconfig.so`, which lives inside the `konlinefileconfig` addon. Removing the addon triggers `libkonlinefileconfig.so: cannot open shared object file` and **every WPS app fails to launch** — and because the `wps`/`et`/`wpp` wrapper redirects stderr to `/dev/null` and exits `0`, it looks like a silent no-op (run the binary directly to see the real error). **Keep `konlinefileconfig`** unless you also remove/dummy `libkprometheus.so` *and* disable fusion mode in `~/.config/Kingsoft/Office.conf`. Its online endpoints are already severed by the Section D blocklist, so keeping this local config lib is safe.
+> **⚠ Launch-critical exception — `konlinefileconfig` (do NOT delete).** `office6/libkprometheus.so` (the "Prometheus"/fusion UI runtime, which is still shipped and loaded at startup) `dlopen`s `libkonlinefileconfig.so`, which lives inside the `konlinefileconfig` addon. Removing the addon triggers `libkonlinefileconfig.so: cannot open shared object file` and **every WPS app fails to launch** — and because the `wps`/`et`/`wpp` wrapper redirects stderr to `/dev/null` and exits `0`, it looks like a silent no-op (run the binary directly to see the real error). **Keep `konlinefileconfig`** unless you also remove/dummy `libkprometheus.so` *and* disable fusion mode in `~/.config/Kingsoft/Office.conf`. Its online endpoints are already severed by the Section D blocklist, so keeping this local config lib is safe. (In the **lite** variant, `clean.sh` does exactly that — dummies `libkprometheus.so` — so `konlinefileconfig` becomes harmless either way.)
 
 | Full path (under build/) | Feature | Action | Affects offline editing? |
 | ---| ---| ---| --- |
@@ -181,18 +215,18 @@ Redirect known WPS/Kingsoft endpoints to loopback to sever updates, telemetry, a
 * * *
 ## Summary of expected space savings (from visible sizes)
 *   Feedback DBs (`kfeedback/db/personal_cn/`): **~12.8 MB**
-*   CEF stack (`cef/` incl. `libcef.so` 165M, `libGLESv2.so` 6.7M, `icudtl.dat` 11M, swiftshader 2.5M, paks): **~190 MB** (if CEF removed)
+*   CEF stack (`cef/` incl. `libcef.so` 165M, `libGLESv2.so` 6.7M, `icudtl.dat` 11M, swiftshader 2.5M, paks): **~190 MB** (if CEF removed — lite variant only)
 *   `kcef/` webview libs: **~4.2 MB**
 *   Non-English `.qm` / `.pak` / `.properties`: **~0.5–1 MB** (small individually; larger once full tree swept)
 *   `kfpccomb` / `docpermission` / cloud addons: several MB more depending on removal choices
 
 **Biggest wins:** the CEF stack and feedback DBs. **Lowest risk:** non-English `.qm`/`.pak` deletions and the `/etc/hosts` block.
 ## Do-this-carefully list (behaviour-changing — decide before running)
-1. **CEF removal** — large win but disables all in-app web UI; confirm start page/launcher still opens.
+1. **CEF removal** — large win but disables all in-app web UI; confirm start page/launcher still opens. (Now gated behind `KEEP_CEF=0` — lite variant only.)
 2. **`kstartpage`** **/** **`kapplist`** **/** **`knewdocs`** — mixed local+online; trim rather than nuke.
 3. **`DEBIAN/postinst`** — edit, don't delete; keep mime/desktop registration, strip update/telemetry/cron.
 4. **`knetwork`** — keep the lib, block the domains instead of deleting.
-5. **`konlinefileconfig`** — **KEEP**; `libkprometheus.so` `dlopen`s `libkonlinefileconfig.so` at startup, so deleting it breaks every app's launch.
+5. **`konlinefileconfig`** — **KEEP**; `libkprometheus.so` `dlopen`s `libkonlinefileconfig.so` at startup, so deleting it breaks every app's launch (unless `libkprometheus.so` is dummied, as in the lite variant).
 
 * * *
 ## Section A (expanded) — Language Resources
@@ -236,7 +270,7 @@ Newly confirmed components:
 | addons/cloudpushsdk/libcloudpushsdk.so | Cloud push SDK | Replace with dummy .so | As above |
 | addons/secanalyze/secanalyze.xml | "Security analyze" config — usage/diagnostic collection | Remove or blank | Verify first; likely no core impact |
 | addons/kfeedback/\* (lib + db/personal\_cn/\*.db ~12.8 MB) + kfeedbackcmds | Feedback / usage reporting | Remove / dummy | Feedback UI dead |
-| office6/libkprometheus.so + desktops/wps-office-prometheus.desktop | "Prometheus" web-app runtime + its launcher entry | Verify first | Removing the .desktop hides the Prometheus app; the lib `dlopen`s `libkonlinefileconfig.so` and is referenced by kprome\* addons — dummy rather than delete unless all kprome\* go too AND `konlinefileconfig` is handled |
+| office6/libkprometheus.so + desktops/wps-office-prometheus.desktop | "Prometheus" web-app runtime + its launcher entry | Verify first | Removing the .desktop hides the Prometheus app; the lib `dlopen`s `libkonlinefileconfig.so` and is referenced by kprome\* addons — dummy rather than delete unless all kprome\* go too AND `konlinefileconfig` is handled. (The lite variant dummies it with an empty .so and drops the .desktop.) |
 | office6/libpaho-mqtt3as.so.1.3.9 | MQTT client lib — persistent push/telemetry transport | Verify first (keep file, block network) | Deleting may break a component that links it; neutralise via Section D instead |
 | office6/libkdownload.so | Generic downloader (updates/templates/fonts) | Verify first | Used by multiple online features; block network rather than delete |
 | office6/libKMailLib.so.71 + cfgs/smtp.xml | Mail/SMTP (feedback/share-by-email) | Verify first / remove smtp.xml contents | Email-share feature dead; no core impact |
@@ -309,15 +343,15 @@ Major online subsystems revealed by the full manifest (all safe to remove for of
 > Prefer a DNS sinkhole / egress firewall on the parent domains (`wps.cn`, `wps.com`, `wpscdn.cn`, `kdocs.cn`, `weibo.com`) over maintaining per-host lines. All entries remain **Verify first** — confirm against live DNS traffic and `domain_qing.cfg`.
 * * *
 ## Updated space-savings highlights
-*   `addons/cef/` ([libcef.so](http://libcef.so) 165M + GLESv2 6.7M + icudtl 11M + swiftshader 2.5M + paks): **~190 MB**
+*   `addons/cef/` ([libcef.so](http://libcef.so) 165M + GLESv2 6.7M + icudtl 11M + swiftshader 2.5M + paks): **~190 MB** (lite variant only)
 *   `addons/qing/` + `officespace/` + `wpsbox/` (large multi-locale web trees): **tens of MB**
 *   `kfeedback/db/personal_cn/*.db`: **~12.8 MB**
 *   `data/chinesesegment/` (friso lex set): **several MB** (Verify first)
 *   Non-English `.qm`/locale dirs across ~25 addons + multi-locale `qing`/`officespace`: **several MB**
 ## Priority "Verify first before running" (behaviour-changing)
-1. **CEF removal** — huge win, disables all web panels; confirm launcher opens.
+1. **CEF removal** — huge win, disables all web panels; confirm launcher opens. (Gated behind `KEEP_CEF=0` — lite variant only.)
 2. **Base auth libs** (`libauth.so`, `libkqingaccountsdk.so`, `libqingipc.so`) — disable via config, don't delete, to avoid launch failure.
-3. **`konlinefileconfig`** — **KEEP**; `libkprometheus.so` `dlopen`s `libkonlinefileconfig.so` at startup, so deleting it makes every app fail to launch.
+3. **`konlinefileconfig`** — **KEEP**; `libkprometheus.so` `dlopen`s `libkonlinefileconfig.so` at startup, so deleting it makes every app fail to launch (unless `libkprometheus.so` is dummied, as the lite variant does).
 4. **`cfgs/feature.dat`** **/** **`oem.ini`** **/** **`domain_qing.cfg`** — prefer disabling cloud/account and rerouting domains via config over raw file deletion.
 5. **`data/chinesesegment/`** **+ Chinese dicts** — safe for English, but test that segmentation/proofing libs still load.
 6. **`kapplist`****/****`kstartpage`****/****`knewdocs`** — trim online entries; keep local tools & blank templates.
