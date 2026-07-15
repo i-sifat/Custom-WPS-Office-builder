@@ -10,8 +10,10 @@ name: Build WPS Office (Custom)
 #                                gone; fusion loader neutralized so no popup.
 #
 # Both builds have telemetry/online addons removed and the Section D network
-# blocklist applied (privacy is independent of CEF), and both bundle the repo's
-# fonts/ directory.
+# blocklist applied (privacy is independent of CEF), both bundle the repo's
+# fonts/ directory, and both keep the OFFLINE "New / New From Docer" page working
+# (local blank templates in knewdocs/res/{kuip,blanktemplate} + a default
+# Office.conf) so a new file can be created from that page with no network.
 #
 # Logic lives in the shell scripts:
 #   * download.sh owns the upstream URL (download + extract).
@@ -71,6 +73,8 @@ jobs:
             ./download.sh --extract
             echo "::endgroup::"
 
+            # clean.sh also keeps the offline New-document page working (local
+            # blank templates + default Office.conf) in both variants.
             echo "::group::[$variant] Clean (KEEP_CEF=$keep_cef)"
             REMOVE_CJK_DATA=1 KEEP_CEF="$keep_cef" BUNDLE_FONTS=1 ./clean.sh
             echo "::endgroup::"
@@ -143,4 +147,4 @@ jobs:
           - **wps-office-custom** - keeps the embedded browser (CEF): modern web home page, no popups. Larger (~+190 MB).
           - **wps-office-custom-lite** - no CEF: lean, classic UI; web home/templates/account panels removed, fusion loader neutralized.
 
-          Both: telemetry/cloud add-ons removed, /etc/hosts.wps-block network blocklist shipped, and bundled fonts installed. See CLEANING_MAP.md."
+          Both: telemetry/cloud add-ons removed, /etc/hosts.wps-block network blocklist shipped, bundled fonts installed, and the offline 'New / New From Docer' page kept working (local blank templates + default Office.conf) so a new file can be created from it with no network. See CLEANING_MAP.md."
