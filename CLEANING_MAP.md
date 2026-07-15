@@ -88,6 +88,8 @@ Only relevant if CEF is retained (see Section C.1). If CEF is removed entirely, 
 ## Section C — Online Features
 These enable accounts, cloud, online templates/fonts, and web-powered panels. None are required for local document editing, but several share the CEF/network stack, so removal order matters.
 
+> **⚠ Launch-critical exception — `konlinefileconfig` (do NOT delete).** `office6/libkprometheus.so` (the "Prometheus"/fusion UI runtime, which is still shipped and loaded at startup) `dlopen`s `libkonlinefileconfig.so`, which lives inside the `konlinefileconfig` addon. Removing the addon triggers `libkonlinefileconfig.so: cannot open shared object file` and **every WPS app fails to launch** — and because the `wps`/`et`/`wpp` wrapper redirects stderr to `/dev/null` and exits `0`, it looks like a silent no-op (run the binary directly to see the real error). **Keep `konlinefileconfig`** unless you also remove/dummy `libkprometheus.so` *and* disable fusion mode in `~/.config/Kingsoft/Office.conf`. Its online endpoints are already severed by the Section D blocklist, so keeping this local config lib is safe.
+
 | Full path (under build/) | Feature | Action | Affects offline editing? |
 | ---| ---| ---| --- |
 | opt/…/addons/cef/ ([libcef.so](http://libcef.so) 165M, \*.pak, icudtl.dat, swiftshader/…) | Chromium Embedded Framework — renders all in-app web panels | Verify first | Indirect: removing it disables start page, online templates, account panels. Core Writer/Sheets/Slides/PDF editing does NOT need CEF, but confirm before deleting ~180 MB |
@@ -99,7 +101,7 @@ These enable accounts, cloud, online templates/fonts, and web-powered panels. No
 | opt/…/addons/knewshare/ | Cloud sharing / share folders | Remove | No |
 | opt/…/addons/kqingdlg/ | "Qing" (Kingsoft cloud) dialogs | Remove | No |
 | opt/…/addons/kskincenter/ | Online skin/theme download | Remove | No — bundled themes may also live here; Verify first before deleting whole dir |
-| opt/…/addons/konlinefileconfig/ | Online file configuration | Remove | No |
+| opt/…/addons/konlinefileconfig/ | Online file configuration | **KEEP — do NOT delete (launch-critical)** | No — but `libkprometheus.so` `dlopen`s `libkonlinefileconfig.so` at startup, so removing it makes every app fail to launch. See the callout above. |
 | opt/…/addons/kappcenter/ + kapplist/ | App center / online tool list (papercheck, papertypeset, pdf2\* cloud engines) | Verify first | Some listed tools are local; deleting the whole applist removes local PDF/photo tools too. Prefer trimming online-only entries |
 | opt/…/addons/kstartpage/ | Start page (online recommendations) | Remove / dummy | Verify first — start page is the launcher UI; removing may drop you straight into a blank workspace |
 | opt/…/addons/kprome\* (kpromeaccountpanel, kpromebrowser, kpromeprocesson, kpromewebapp, kpromeworkarea) | "Prometheus" web-app / account / process-online suite | Remove | No — all web-powered |
@@ -107,7 +109,7 @@ These enable accounts, cloud, online templates/fonts, and web-powered panels. No
 | opt/…/addons/knewdocs/res/ (online template browser: CloudTab.svg, bg-neterror.png, loadingOutlines.gif) | Online template gallery | Trim online, keep local | Verify first — KEEP res/blanktemplate/\*.pptx (local blank docs); remove only the cloud-gallery web assets |
 | opt/…/addons/kclouddocs/…/error-cefabort, error-page | Web error pages | Remove with kclouddocs | No |
 
-**Recommended removal order (avoids crashes):** disable at the addon-registry/config level first → then remove the `kprome*`, `kclouddocs`, `kusercenter`, `knewshare`, `kqingdlg`, `konlinefileconfig` addons → then `kcef`/`jsapi` → **last**, decide on `cef/` (biggest space win, highest coupling). Keep `knetwork` in place but neutralise it via Section D.
+**Recommended removal order (avoids crashes):** disable at the addon-registry/config level first → then remove the `kprome*`, `kclouddocs`, `kusercenter`, `knewshare`, `kqingdlg` addons → then `kcef`/`jsapi` → **last**, decide on `cef/` (biggest space win, highest coupling). **Keep `konlinefileconfig`** (launch-critical — see callout) and keep `knetwork` in place but neutralise it via Section D.
 
 * * *
 ## Section D — Network Blocklist (`/etc/hosts` style)
@@ -190,6 +192,7 @@ Redirect known WPS/Kingsoft endpoints to loopback to sever updates, telemetry, a
 2. **`kstartpage`** **/** **`kapplist`** **/** **`knewdocs`** — mixed local+online; trim rather than nuke.
 3. **`DEBIAN/postinst`** — edit, don't delete; keep mime/desktop registration, strip update/telemetry/cron.
 4. **`knetwork`** — keep the lib, block the domains instead of deleting.
+5. **`konlinefileconfig`** — **KEEP**; `libkprometheus.so` `dlopen`s `libkonlinefileconfig.so` at startup, so deleting it breaks every app's launch.
 
 * * *
 ## Section A (expanded) — Language Resources
@@ -233,7 +236,7 @@ Newly confirmed components:
 | addons/cloudpushsdk/libcloudpushsdk.so | Cloud push SDK | Replace with dummy .so | As above |
 | addons/secanalyze/secanalyze.xml | "Security analyze" config — usage/diagnostic collection | Remove or blank | Verify first; likely no core impact |
 | addons/kfeedback/\* (lib + db/personal\_cn/\*.db ~12.8 MB) + kfeedbackcmds | Feedback / usage reporting | Remove / dummy | Feedback UI dead |
-| office6/libkprometheus.so + desktops/wps-office-prometheus.desktop | "Prometheus" web-app runtime + its launcher entry | Verify first | Removing the .desktop hides the Prometheus app; the lib may be referenced by kprome\* addons — dummy rather than delete unless all kprome\* go too |
+| office6/libkprometheus.so + desktops/wps-office-prometheus.desktop | "Prometheus" web-app runtime + its launcher entry | Verify first | Removing the .desktop hides the Prometheus app; the lib `dlopen`s `libkonlinefileconfig.so` and is referenced by kprome\* addons — dummy rather than delete unless all kprome\* go too AND `konlinefileconfig` is handled |
 | office6/libpaho-mqtt3as.so.1.3.9 | MQTT client lib — persistent push/telemetry transport | Verify first (keep file, block network) | Deleting may break a component that links it; neutralise via Section D instead |
 | office6/libkdownload.so | Generic downloader (updates/templates/fonts) | Verify first | Used by multiple online features; block network rather than delete |
 | office6/libKMailLib.so.71 + cfgs/smtp.xml | Mail/SMTP (feedback/share-by-email) | Verify first / remove smtp.xml contents | Email-share feature dead; no core impact |
@@ -252,14 +255,14 @@ Major online subsystems revealed by the full manifest (all safe to remove for of
 | addons/wpsbox/ ([libwpsbox.so](http://libwpsbox.so) + cloudsettings, filetransfer, sharefolder, syncfolder, teamevent, teammember, msgchannel, recommend, documentassistant) | WPS cloud box: sync, file transfer, team/share, recommendations | Remove | No |
 | addons/kweibo/ ([libkweibo.so](http://libkweibo.so) + weibo/\*) | Weibo (Chinese social) sharing | Remove | No |
 | addons/shareplay/libshareplay.so | SharePlay real-time online presentation sharing | Remove | No |
-| addons/konlinefileconfig/ (lib + res: onlinefileconfig.xml, icon.rcc) | Online file-type config | Remove / Verify first | Verify first — confirm it's not consulted for local file associations |
+| addons/konlinefileconfig/ (lib + res: onlinefileconfig.xml, icon.rcc) | Online file-type config + `libkonlinefileconfig.so` | **KEEP — launch-critical (do NOT delete)** | `libkprometheus.so` `dlopen`s `libkonlinefileconfig.so` at startup; deleting the addon breaks every app's launch. Keep it (see the Section C callout). |
 | addons/kwebextensionlist/ (config.ini, kwebextensionlist.cfg, webshapenotices.txt) | Web extension/shape list (online content) | Remove | Verify first — "webshapes" may back some insertable shapes |
 | addons/linkeddatatype/linkdata.json | Linked data types (online-backed cell types) | Remove | No |
 | addons/kappcenter/, kapplist/, kappmgr/, kappentryobject/ | App center / tool list (mix of local PDF/photo tools + cloud engines like papercheck, papertypeset) | Verify first — trim, don't nuke | Some listed tools (pdf split/merge, photo tools) are local; deleting the whole applist removes them too |
 | addons/kstartpage/ | Start page (online recommendations + local nav via res/kuip/officenav.kui) | Verify first | Start page is the launcher shell; prefer trimming its web/htmlep content over deleting the addon |
 | addons/knewdocs/ (res/ online template gallery) | New-doc / online templates | Trim online; KEEP res/blanktemplate/\*.pptx | Verify first — local blank templates live here |
 | addons/kprome\* (accountpanel, browser, processon, webapp, workarea) | "Prometheus" web-app suite | Remove (+ dummy [libkprometheus.so](http://libkprometheus.so) if all removed) | No |
-| addons/kclouddocs/, kcloudfiledialog/, kusercenter/, knewshare/, kqingdlg/, kqrcode/ | Cloud docs, cloud dialog, account, sharing, cloud dialogs, QR handoff | Remove (kqrcode/konlinefileconfig: Verify first) | No (verify kcloudfiledialog doesn't replace local dialog) |
+| addons/kclouddocs/, kcloudfiledialog/, kusercenter/, knewshare/, kqingdlg/, kqrcode/ | Cloud docs, cloud dialog, account, sharing, cloud dialogs, QR handoff | Remove (kqrcode: Verify first; konlinefileconfig: KEEP — launch-critical, handled separately) | No (verify kcloudfiledialog doesn't replace local dialog) |
 | addons/cef/ (~190 MB) + kcef/ + jsapi/ | Chromium Embedded Framework + bridge + JS-API HTTP server | Verify first (biggest win, highest coupling) | Removes ALL in-app web UI; core editing does not need it — confirm launcher/start page still opens first |
 
 ### C.1 Config files that point at online services (edit, don't delete blindly)
@@ -270,6 +273,7 @@ Major online subsystems revealed by the full manifest (all safe to remove for of
 ### C.2 Core libraries — **KEEP (required for local editing)**
 `libetmain.so`, `libetapi.so`, `libexcelrw.so`, `libetxmlrw.so` (Spreadsheets) · `libpptreader.so`, `libpptwriter.so`, `libpptxrw.so`, `libplayer.so` (Presentation) · `libdocwriter.so`, `libhtml2.so`, `libhtmlpub.so` (Writer) · `libpdfmain.so`, `libqpdfpaint.so` (PDF) · `libkso.so`, `libksolite.so`, `libksoapi.so`, `libksmso.so` · all `libQt5*Kso.so.5.12.10` · `libicu*`, `libcrypto/ssl/nss*`, `libhunspell.so` (English spellcheck), `libmythes.so` (thesaurus). Do **not** remove these.
 > **Caution — auth/account libs:** `libauth.so`, `libkqingaccountsdk.so`, `libqingipc.so` support login/account. They _look_ removable, but core binaries may link them at startup. **Verify first** — prefer disabling account UI (via config + removing the account addons) over deleting these base libs, to avoid a failed launch.
+> **Caution — Prometheus dep:** `libkprometheus.so` `dlopen`s `libkonlinefileconfig.so` (in the `konlinefileconfig` addon) at startup. Keep `konlinefileconfig` unless you also remove/dummy `libkprometheus.so` and disable fusion mode in `Office.conf`.
 * * *
 ## Section D (expanded) — Network Blocklist
 **Best source of truth in this package:** `office6/cfgs/domain_qing.cfg` — inspect it and add every host it lists. Until then, the page‑1 `/etc/hosts` block stands, plus these additions implied by the newly found subsystems (weibo, shareplay, mqtt push, mail):
@@ -313,7 +317,8 @@ Major online subsystems revealed by the full manifest (all safe to remove for of
 ## Priority "Verify first before running" (behaviour-changing)
 1. **CEF removal** — huge win, disables all web panels; confirm launcher opens.
 2. **Base auth libs** (`libauth.so`, `libkqingaccountsdk.so`, `libqingipc.so`) — disable via config, don't delete, to avoid launch failure.
-3. **`cfgs/feature.dat`** **/** **`oem.ini`** **/** **`domain_qing.cfg`** — prefer disabling cloud/account and rerouting domains via config over raw file deletion.
-4. **`data/chinesesegment/`** **+ Chinese dicts** — safe for English, but test that segmentation/proofing libs still load.
-5. **`kapplist`****/****`kstartpage`****/****`knewdocs`** — trim online entries; keep local tools & blank templates.
-6. **`DEBIAN/postinst`** **&** **`prerm`** — edit to strip telemetry/update while preserving mime/desktop registration.
+3. **`konlinefileconfig`** — **KEEP**; `libkprometheus.so` `dlopen`s `libkonlinefileconfig.so` at startup, so deleting it makes every app fail to launch.
+4. **`cfgs/feature.dat`** **/** **`oem.ini`** **/** **`domain_qing.cfg`** — prefer disabling cloud/account and rerouting domains via config over raw file deletion.
+5. **`data/chinesesegment/`** **+ Chinese dicts** — safe for English, but test that segmentation/proofing libs still load.
+6. **`kapplist`****/****`kstartpage`****/****`knewdocs`** — trim online entries; keep local tools & blank templates.
+7. **`DEBIAN/postinst`** **&** **`prerm`** — edit to strip telemetry/update while preserving mime/desktop registration.
